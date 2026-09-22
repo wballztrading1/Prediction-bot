@@ -13,7 +13,7 @@ from x402.server import x402ResourceServer
 app = FastAPI(title="Prediction Market Sentiment")
 
 XAI_KEY = os.environ["XAI_API_KEY"]
-PAY_TO = "0xda83f90adeb6c540c5c68f0d0656982603387db0"
+PAY_TO = os.environ["PAY_TO_ADDRESS"]
 PRICE = os.environ.get("PRICE", "$0.01")
 NETWORK = "eip155:84532"
 
