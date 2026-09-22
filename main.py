@@ -4,8 +4,13 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from openai import OpenAI
 
-from x402.extensions.bazaar import OutputConfig, declare_discovery_extension
-from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
+from cdp.x402 import create_facilitator_config
+from x402.extensions.bazaar import (
+    OutputConfig,
+    bazaar_resource_server_extension,
+    declare_discovery_extension,
+)
+from x402.http import HTTPFacilitatorClient, PaymentOption
 from x402.http.middleware.fastapi import PaymentMiddlewareASGI
 from x402.http.types import RouteConfig
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
@@ -17,44 +22,41 @@ XAI_KEY = os.environ["XAI_API_KEY"]
 PAY_TO = os.environ["PAY_TO_ADDRESS"]
 PRICE = os.environ.get("PRICE", "$0.01")
 NETWORK = "eip155:8453"
-FACILITATOR_URL = os.environ.get("FACILITATOR_URL", "https://facilitator.xpay.sh")
 
 client = OpenAI(api_key=XAI_KEY, base_url="https://api.x.ai/v1")
 
-facilitator = HTTPFacilitatorClient(
-    FacilitatorConfig(url=FACILITATOR_URL)
-)
-server = x402ResourceServer(facilitator)
+server = x402ResourceServer(HTTPFacilitatorClient(create_facilitator_config()))
 server.register(NETWORK, ExactEvmServerScheme())
+server.register_extension(bazaar_resource_server_extension)
 
 routes = {
     "GET /sentiment": RouteConfig(
         accepts=[PaymentOption(
-            scheme="exact", pay_to=PAY_TO,
-            price=PRICE, network=NETWORK,
+            scheme="exact",
+            pay_to=PAY_TO,
+            price=PRICE,
+            network=NETWORK,
         )],
         mime_type="application/json",
-        description="Sentiment score for a Polymarket or Kalshi market",
-        service_name="Pred Sentiment",
-        tags=["sentiment", "prediction", "crypto"],
+        description="Sentiment score for a Polymarket or Kalshi market question",
         extensions=declare_discovery_extension(
             input={"q": "Will Bitcoin hit 150k in 2026"},
             input_schema={
                 "properties": {
                     "q": {
                         "type": "string",
-                        "description": "Prediction market question",
+                        "description": "Prediction market question from Polymarket or Kalshi",
                     }
                 },
                 "required": ["q"],
             },
             output=OutputConfig(
                 example={
-                    "score": -88,
-                    "catalyst": "Market prices a low chance of 150k",
-                    "volume_signal": "falling",
+                    "score": 12,
+                    "catalyst": "ETF inflows and options positioning",
+                    "volume_signal": "rising",
                     "question": "Will Bitcoin hit 150k in 2026",
-                    "scored_at": "2026-09-22T19:20:47Z",
+                    "scored_at": "2026-09-22T00:00:00+00:00",
                 }
             ),
         ),
