@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from openai import OpenAI
 
+from x402.extensions.bazaar import OutputConfig, declare_discovery_extension
 from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
 from x402.http.middleware.fastapi import PaymentMiddlewareASGI
 from x402.http.types import RouteConfig
@@ -33,6 +34,29 @@ routes = {
         )],
         mime_type="application/json",
         description="Sentiment score for a Polymarket or Kalshi market",
+        service_name="Pred Sentiment",
+        tags=["sentiment", "prediction", "crypto"],
+        extensions=declare_discovery_extension(
+            input={"q": "Will Bitcoin hit 150k in 2026"},
+            input_schema={
+                "properties": {
+                    "q": {
+                        "type": "string",
+                        "description": "Prediction market question",
+                    }
+                },
+                "required": ["q"],
+            },
+            output=OutputConfig(
+                example={
+                    "score": -88,
+                    "catalyst": "Market prices a low chance of 150k",
+                    "volume_signal": "falling",
+                    "question": "Will Bitcoin hit 150k in 2026",
+                    "scored_at": "2026-09-22T19:20:47Z",
+                }
+            ),
+        ),
     ),
 }
 app.add_middleware(PaymentMiddlewareASGI, routes=routes, server=server)
