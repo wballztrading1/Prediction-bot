@@ -12,7 +12,8 @@ from x402.server import x402ResourceServer
 
 app = FastAPI(title="Prediction Market Sentiment")
 
-XAI_KEY = os.environ PAY_TO = "0xda83f90adeb6c540c5c68f0d0656982603387db0"
+XAI_KEY = os.environ["XAI_API_KEY"]
+PAY_TO = "0xda83f90adeb6c540c5c68f0d0656982603387db0"
 PRICE = os.environ.get("PRICE", "$0.01")
 NETWORK = "eip155:84532"
 
@@ -36,7 +37,7 @@ routes = {
 }
 app.add_middleware(PaymentMiddlewareASGI, routes=routes, server=server)
 
-CACHE =
+CACHE = {}
 TTL = 300
 
 def score_market(question: str) -> dict:
@@ -55,7 +56,7 @@ def score_market(question: str) -> dict:
     )
     resp = client.responses.create(
         model="grok-4.7",
-        input= ,
+        input=[{"role": "user", "content": prompt}],
         tools=[{"type": "x_search"}],
     )
     text = resp.output_text
@@ -63,9 +64,9 @@ def score_market(question: str) -> dict:
     data = json.loads(m.group(0)) if m else {
         "score": 0, "catalyst": "parse error", "volume_signal": "flat"
     }
-    data = question
+    data["question"] = question
     data["scored_at"] = datetime.now(timezone.utc).isoformat()
-    CACHE = (now, data)
+    CACHE[key] = (now, data)
     return data
 
 @app.get("/sentiment")
