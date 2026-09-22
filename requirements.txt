@@ -1,7 +1,7 @@
 fastapi
 uvicorn
 openai
-x402[fastapi,httpx,evm]
+x402[fastapi,httpx,evm,extensions]
 cdp-sdk
 setuptools
 wheel
