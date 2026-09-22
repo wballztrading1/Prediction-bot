@@ -16,12 +16,13 @@ app = FastAPI(title="Prediction Market Sentiment")
 XAI_KEY = os.environ["XAI_API_KEY"]
 PAY_TO = os.environ["PAY_TO_ADDRESS"]
 PRICE = os.environ.get("PRICE", "$0.01")
-NETWORK = "eip155:84532"
+NETWORK = "eip155:8453"
+FACILITATOR_URL = os.environ.get("FACILITATOR_URL", "https://facilitator.xpay.sh")
 
 client = OpenAI(api_key=XAI_KEY, base_url="https://api.x.ai/v1")
 
 facilitator = HTTPFacilitatorClient(
-    FacilitatorConfig(url="https://x402.org/facilitator")
+    FacilitatorConfig(url=FACILITATOR_URL)
 )
 server = x402ResourceServer(facilitator)
 server.register(NETWORK, ExactEvmServerScheme())
