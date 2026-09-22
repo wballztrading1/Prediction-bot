@@ -3,3 +3,4 @@ uvicorn
 openai
 x402[fastapi,httpx,evm]
 cdp
+setuptools
