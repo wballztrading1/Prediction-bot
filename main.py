@@ -12,10 +12,9 @@ from x402.server import x402ResourceServer
 
 app = FastAPI(title="Prediction Market Sentiment")
 
-XAI_KEY = os.environ["XAI_API_KEY"]
-PAY_TO = "0xda83f90adeb6c540c5c68f0d0656982603387db0"
+XAI_KEY = os.environ PAY_TO = "0xda83f90adeb6c540c5c68f0d0656982603387db0"
 PRICE = os.environ.get("PRICE", "$0.01")
-NETWORK = "eip155:84532"  # Base Sepolia for testing
+NETWORK = "eip155:84532"
 
 client = OpenAI(api_key=XAI_KEY, base_url="https://api.x.ai/v1")
 
@@ -44,7 +43,8 @@ def score_market(question: str) -> dict:
     key = question.strip().lower()
     now = datetime.now(timezone.utc).timestamp()
     hit = CACHE.get(key)
-    if hit and now - hit[0 1]
+    if hit and now - hit[0] < TTL:
+        return hit[1]
 
     prompt = (
         f"Search X for recent posts about this prediction market:\n"
@@ -56,7 +56,7 @@ def score_market(question: str) -> dict:
     resp = client.responses.create(
         model="grok-4.7",
         input= ,
-        tools= ,
+        tools=[{"type": "x_search"}],
     )
     text = resp.output_text
     m = re.search(r"\{.*\}", text, re.S)
@@ -64,7 +64,7 @@ def score_market(question: str) -> dict:
         "score": 0, "catalyst": "parse error", "volume_signal": "flat"
     }
     data = question
-    data = datetime.now(timezone.utc).isoformat()
+    data["scored_at"] = datetime.now(timezone.utc).isoformat()
     CACHE = (now, data)
     return data
 
