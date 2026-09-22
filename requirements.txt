@@ -1,4 +1,5 @@
 fastapi
 uvicorn
 openai
-x402[fastapi,httpx,evm,extensions]
+x402[fastapi,httpx,evm]
+cdp
