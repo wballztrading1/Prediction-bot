@@ -1,5 +1,5 @@
 fastapi
-uvicorn
+uvicorn[standard]
 openai
 x402[fastapi,httpx,evm,extensions]
 cdp-sdk
