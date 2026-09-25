@@ -39,12 +39,31 @@ class PolymarketOdds(BaseModel):
     match_score: float = Field(description="0..1 word-overlap score between q and the matched market")
 
 
+class KalshiOdds(BaseModel):
+    source: Literal["kalshi"] = "kalshi"
+    market: str = Field(description="Matched Kalshi event title (and outcome for multi-outcome events)")
+    ticker: Optional[str] = Field(None, description="Kalshi market ticker")
+    yes_price: float = Field(ge=0, le=1, description="Yes price (0..1): bid/ask midpoint, else last trade")
+    implied_prob_pct: float = Field(ge=0, le=100)
+    best_bid: Optional[float] = None
+    best_ask: Optional[float] = None
+    volume_24h: Optional[float] = None
+    url: Optional[str] = None
+    match_score: float
+
+
 class OddsOut(BaseModel):
     polymarket: Optional[PolymarketOdds] = Field(
         None, description="Null when no open market matches q closely enough"
     )
+    kalshi: Optional[KalshiOdds] = Field(
+        None, description="Null when no open Kalshi market matches q closely enough"
+    )
     fetched_at: str
-    error: Optional[str] = Field(None, description="odds_unavailable if the odds source did not respond")
+    error: Optional[str] = Field(None, description="odds_unavailable if Polymarket did not respond")
+    kalshi_error: Optional[str] = Field(
+        None, description="kalshi_index_warming or kalshi_unavailable"
+    )
 
 
 class BriefOut(BaseModel):
@@ -56,7 +75,7 @@ class BriefOut(BaseModel):
     score_before: int
     summary: str = Field(description="One-line human/agent readable summary")
     scored_at: Optional[str] = None
-    odds: Optional[OddsOut] = Field(None, description="Live Polymarket odds for the matched market")
+    odds: Optional[OddsOut] = Field(None, description="Live Polymarket and Kalshi odds for the matched market")
     tier: Literal["brief"] = "brief"
     degraded: Optional[str] = None
 
@@ -122,6 +141,7 @@ class HealthOut(BaseModel):
     cache_ttl_sec: int
     network: str = Field(examples=["eip155:8453"])
     test_mode: bool
+    odds_index: Optional[dict] = Field(None, description="Kalshi events index size, age and status")
 
 
 class PricingTier(BaseModel):
