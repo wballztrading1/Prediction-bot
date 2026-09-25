@@ -7,10 +7,13 @@ from datetime import datetime, timezone
 from typing import Optional, Union
 
 from fastapi import FastAPI, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from openai import OpenAI
 
 from landing import about_html, llms_txt
+from odds import FIXTURE as ODDS_FIXTURE
+from odds import market_odds
 from schemas import (
     Q_DESCRIPTION,
     Q_EXAMPLE,
@@ -142,6 +145,17 @@ if not TEST_MODE:
         "score_before": -4,
         "summary": "X chatter turned more bullish after ETF inflow headlines.",
         "scored_at": "2026-09-22T00:00:00+00:00",
+        "odds": {
+            "polymarket": {
+                "source": "polymarket",
+                "market": "Will Bitcoin hit $150k by December 31, 2026?",
+                "yes_price": 0.028,
+                "implied_prob_pct": 2.8,
+                "url": "https://polymarket.com/event/when-will-bitcoin-hit-150k",
+                "match_score": 0.9,
+            },
+            "fetched_at": "2026-09-22T00:00:00+00:00",
+        },
         "tier": "brief",
     }
     SHIFT_EXAMPLE = {
@@ -179,7 +193,8 @@ if not TEST_MODE:
         "GET /brief": pay_route(
             (
                 "Prediction-market briefing for AI agents: X sentiment score, "
-                "catalyst, volume_signal, shift vs prior cache, and a one-line summary. "
+                "catalyst, volume_signal, shift vs prior cache, a one-line summary, "
+                "and live Polymarket odds (Yes price) for the matched market. "
                 "Polymarket and Kalshi questions. Full brief at $0.05."
             ),
             BRIEF_EXAMPLE,
@@ -620,7 +635,13 @@ async def brief(request: Request, q: str = Q_PARAM):
     data = score_market(q, request)
     if isinstance(data, JSONResponse):
         return data
-    return build_brief(q, data)
+    out = build_brief(q, data)
+    fetch = (lambda _q: ODDS_FIXTURE) if TEST_MODE else None
+    out["odds"] = await run_in_threadpool(market_odds, q, fetch)
+    pm = out["odds"].get("polymarket")
+    if pm:
+        out["summary"] += f" Polymarket Yes: {pm['implied_prob_pct']}%."
+    return out
 
 
 @app.get(
