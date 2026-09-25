@@ -27,6 +27,26 @@ class SentimentOut(BaseModel):
     )
 
 
+class PolymarketOdds(BaseModel):
+    source: Literal["polymarket"] = "polymarket"
+    market: str = Field(description="Matched Polymarket market question")
+    yes_price: float = Field(ge=0, le=1, description="Yes outcome price (0..1)")
+    implied_prob_pct: float = Field(ge=0, le=100, description="yes_price as a percentage")
+    best_bid: Optional[float] = None
+    best_ask: Optional[float] = None
+    volume_24h: Optional[float] = None
+    url: Optional[str] = None
+    match_score: float = Field(description="0..1 word-overlap score between q and the matched market")
+
+
+class OddsOut(BaseModel):
+    polymarket: Optional[PolymarketOdds] = Field(
+        None, description="Null when no open market matches q closely enough"
+    )
+    fetched_at: str
+    error: Optional[str] = Field(None, description="odds_unavailable if the odds source did not respond")
+
+
 class BriefOut(BaseModel):
     question: str = Field(examples=[Q_EXAMPLE])
     score: int = Field(ge=-100, le=100)
@@ -36,6 +56,7 @@ class BriefOut(BaseModel):
     score_before: int
     summary: str = Field(description="One-line human/agent readable summary")
     scored_at: Optional[str] = None
+    odds: Optional[OddsOut] = Field(None, description="Live Polymarket odds for the matched market")
     tier: Literal["brief"] = "brief"
     degraded: Optional[str] = None
 
