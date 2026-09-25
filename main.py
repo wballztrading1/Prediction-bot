@@ -7,9 +7,10 @@ from datetime import datetime, timezone
 from typing import Optional, Union
 
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from openai import OpenAI
 
+from landing import about_html, llms_txt
 from schemas import (
     Q_DESCRIPTION,
     Q_EXAMPLE,
@@ -262,6 +263,8 @@ def catalog_body() -> dict:
             {"method": "GET", "path": "/sample", "price": "$0", "desc": "Static example JSON (no Grok)"},
             {"method": "GET", "path": "/catalog", "price": "$0", "desc": "Machine-readable route catalog"},
             {"method": "GET", "path": "/pricing", "price": "$0", "desc": "Explicit price ladder"},
+            {"method": "GET", "path": "/about", "price": "$0", "desc": "Human-readable landing page"},
+            {"method": "GET", "path": "/llms.txt", "price": "$0", "desc": "Plain-text summary for LLM agents"},
         ],
         "paid": [
             {
@@ -556,6 +559,16 @@ async def pricing():
 @app.get("/sample", tags=["free"], summary="Static example response (no Grok)", responses={200: {"model": SampleOut}})
 async def sample():
     return SAMPLE_PAYLOAD
+
+
+@app.get("/about", tags=["free"], summary="Human-readable landing page", response_class=HTMLResponse)
+async def about():
+    return about_html(PUBLIC_BASE, PRICE_LITE, PRICE_BRIEF, PAY_TO, NETWORK, TTL)
+
+
+@app.get("/llms.txt", tags=["free"], summary="Plain-text summary for LLM agents", response_class=PlainTextResponse)
+async def llms():
+    return llms_txt(PUBLIC_BASE, PRICE_LITE, PRICE_BRIEF, NETWORK, TTL)
 
 
 @app.get("/health", tags=["free"], summary="Liveness and price ladder", responses={200: {"model": HealthOut}})
