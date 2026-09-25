@@ -5,3 +5,5 @@ x402[fastapi,httpx,evm,extensions]
 cdp-sdk
 setuptools
 wheel
+httpx
+pytest
