@@ -23,6 +23,23 @@ curl -s https://prediction-bot-iggf.onrender.com/pricing
 python demo/pay_once.py   # shows free routes + unpaid 402
 ```
 
+## For agents: MCP server
+
+Add live prediction-market sentiment to any MCP client (Claude, Cursor, etc.). Free tools work without a wallet; paid tools settle in USDC on Base via x402, with per-call and per-session spend caps.
+
+```json
+{
+  "mcpServers": {
+    "prediction-bot": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/wballztrading1/Prediction-bot#subdirectory=mcp_server", "prediction-bot-mcp"]
+    }
+  }
+}
+```
+
+Details, wallet setup and caps: [`mcp_server/README.md`](mcp_server/README.md).
+
 ## Env (Render)
 
 - `XAI_API_KEY` — required
