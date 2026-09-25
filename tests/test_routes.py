@@ -23,15 +23,39 @@ def test_health_ladder():
     assert body["status"] == "ok"
     assert body["price_lite"] == "$0.01"
     assert body["price_brief"] == "$0.05"
-    assert "/sentiment" in body["routes"]["paid_lite"]
+    assert "/top" in body["routes"]["paid_lite"]
+    assert "/shift" in body["routes"]["paid_lite"]
+    assert "/sentiment" in body["routes"]["paid_brief"]
     assert "/brief" in body["routes"]["paid_brief"]
 
 
+def test_pricing_ladder():
+    r = client.get("/pricing")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["price_lite"] == "$0.01"
+    assert body["price_brief"] == "$0.05"
+    assert "/top" in body["ladder"]["lite"]["routes"]
+    assert "/shift" in body["ladder"]["lite"]["routes"]
+    assert "/sentiment" in body["ladder"]["full"]["routes"]
+    assert "/brief" in body["ladder"]["full"]["routes"]
+
+
 def test_free_catalog_sample_root():
-    for path in ("/", "/catalog", "/sample"):
+    for path in ("/", "/catalog", "/sample", "/pricing"):
         r = client.get(path)
         assert r.status_code == 200, path
         assert r.json()
+
+
+def test_catalog_prices_aligned():
+    r = client.get("/catalog")
+    assert r.status_code == 200
+    paid = {row["path"]: row["price"] for row in r.json()["paid"]}
+    assert paid["/top"] == "$0.01"
+    assert paid["/shift"] == "$0.01"
+    assert paid["/sentiment"] == "$0.05"
+    assert paid["/brief"] == "$0.05"
 
 
 def test_sentiment_requires_q():
@@ -40,13 +64,13 @@ def test_sentiment_requires_q():
     assert "error" in r.json()
 
 
-def test_sentiment_lite_shape():
+def test_sentiment_shape():
     main.CACHE.clear()
     main.PREV.clear()
     r = client.get("/sentiment", params={"q": "Will Bitcoin hit 150k in 2026"})
     assert r.status_code == 200
     body = r.json()
-    assert body["tier"] == "lite"
+    assert body["tier"] == "sentiment"
     assert -100 <= body["score"] <= 100
     assert body["volume_signal"] in ("rising", "falling", "flat")
 

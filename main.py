@@ -45,8 +45,8 @@ app = FastAPI(
     title="Prediction Market X Sentiment (x402)",
     description=(
         "Agent-native Polymarket/Kalshi sentiment from live X chatter. "
-        "Pay USDC on Base via HTTP 402. Free: /, /health, /sample, /catalog. "
-        "Lite $0.01: /sentiment. Brief $0.05: /brief, /shift, /top."
+        "Pay USDC on Base via HTTP 402. Free: /, /health, /sample, /catalog, /pricing. "
+        "Lite $0.01: /top, /shift. Full $0.05: /sentiment, /brief."
     ),
     version="1.1.0",
 )
@@ -107,7 +107,7 @@ if not TEST_MODE:
         "volume_signal": "rising",
         "question": "Will Bitcoin hit 150k in 2026",
         "scored_at": "2026-09-22T00:00:00+00:00",
-        "tier": "lite",
+        "tier": "sentiment",
     }
     BRIEF_EXAMPLE = {
         "question": "Will Bitcoin hit 150k in 2026",
@@ -145,10 +145,10 @@ if not TEST_MODE:
             (
                 "Polymarket/Kalshi X (Twitter) sentiment score for agents — "
                 "Grok live search returns score -100..100, catalyst, and volume_signal. "
-                "Lite tier for discovery and high-frequency polls."
+                "Full Grok X-sentiment at $0.05."
             ),
             SENTIMENT_EXAMPLE,
-            PRICE_LITE,
+            PRICE_BRIEF,
             q_schema,
             {"q": "Will Bitcoin hit 150k in 2026"},
         ),
@@ -156,7 +156,7 @@ if not TEST_MODE:
             (
                 "Prediction-market briefing for AI agents: X sentiment score, "
                 "catalyst, volume_signal, shift vs prior cache, and a one-line summary. "
-                "Polymarket and Kalshi questions. Richer than /sentiment."
+                "Polymarket and Kalshi questions. Full brief at $0.05."
             ),
             BRIEF_EXAMPLE,
             PRICE_BRIEF,
@@ -166,20 +166,22 @@ if not TEST_MODE:
         "GET /shift": pay_route(
             (
                 "Sentiment shift detector for Polymarket/Kalshi: current X score "
-                "minus last cached score — catch narrative flips between agent polls."
+                "minus last cached score — catch narrative flips between agent polls. "
+                "Lite discovery price $0.01 (aligns with Bazaar indexes)."
             ),
             SHIFT_EXAMPLE,
-            PRICE_BRIEF,
+            PRICE_LITE,
             q_schema,
             {"q": "Will Bitcoin hit 150k in 2026"},
         ),
         "GET /top": pay_route(
             (
                 "Top 3 Polymarket/Kalshi markets by live X (Twitter) discussion "
-                "intensity with sentiment scores — agent discovery scan."
+                "intensity with sentiment scores — agent discovery scan at $0.01 "
+                "(aligns with Bazaar /top index pricing)."
             ),
             TOP_EXAMPLE,
-            PRICE_BRIEF,
+            PRICE_LITE,
         ),
     }
     app.add_middleware(PaymentMiddlewareASGI, routes=routes, server=server)
@@ -196,8 +198,8 @@ blocked = {}
 SAMPLE_PAYLOAD = {
     "demo": True,
     "note": (
-        "Free sample — not live Grok. Pay /sentiment ($0.01) or /brief ($0.05) "
-        "for live X scoring."
+        "Free sample — not live Grok. Discovery /top+/shift $0.01; "
+        "full /sentiment+/brief $0.05."
     ),
     "example_request": f"{PUBLIC_BASE}/sentiment?q=Will%20Bitcoin%20hit%20150k%20in%202026",
     "example_response": {
@@ -206,7 +208,7 @@ SAMPLE_PAYLOAD = {
         "volume_signal": "rising",
         "question": "Will Bitcoin hit 150k in 2026",
         "scored_at": "2026-09-22T00:00:00+00:00",
-        "tier": "lite",
+        "tier": "sentiment",
     },
 }
 
@@ -236,14 +238,28 @@ def catalog_body() -> dict:
             {"method": "GET", "path": "/health", "price": "$0", "desc": "Liveness + price ladder"},
             {"method": "GET", "path": "/sample", "price": "$0", "desc": "Static example JSON (no Grok)"},
             {"method": "GET", "path": "/catalog", "price": "$0", "desc": "Machine-readable route catalog"},
+            {"method": "GET", "path": "/pricing", "price": "$0", "desc": "Explicit price ladder"},
         ],
         "paid": [
             {
                 "method": "GET",
-                "path": "/sentiment",
+                "path": "/top",
+                "price": PRICE_LITE,
+                "desc": "Three hottest markets on X — lite discovery $0.01",
+            },
+            {
+                "method": "GET",
+                "path": "/shift",
                 "price": PRICE_LITE,
                 "query": {"q": "market question"},
-                "desc": "Lite X sentiment score -100..100",
+                "desc": "Delta vs prior cached score — lite discovery $0.01",
+            },
+            {
+                "method": "GET",
+                "path": "/sentiment",
+                "price": PRICE_BRIEF,
+                "query": {"q": "market question"},
+                "desc": "Full Grok X sentiment score -100..100",
             },
             {
                 "method": "GET",
@@ -251,19 +267,6 @@ def catalog_body() -> dict:
                 "price": PRICE_BRIEF,
                 "query": {"q": "market question"},
                 "desc": "Score + shift + one-line summary",
-            },
-            {
-                "method": "GET",
-                "path": "/shift",
-                "price": PRICE_BRIEF,
-                "query": {"q": "market question"},
-                "desc": "Delta vs prior cached score",
-            },
-            {
-                "method": "GET",
-                "path": "/top",
-                "price": PRICE_BRIEF,
-                "desc": "Three hottest markets on X right now",
             },
         ],
         "docs": f"{PUBLIC_BASE}/docs",
@@ -503,6 +506,26 @@ async def catalog():
     return catalog_body()
 
 
+@app.get("/pricing")
+async def pricing():
+    """Explicit price ladder for agents and humans."""
+    return {
+        "currency": "USDC",
+        "network": NETWORK,
+        "ladder": {
+            "free": ["/", "/health", "/sample", "/catalog", "/pricing", "/docs"],
+            "lite": {"price": PRICE_LITE, "routes": ["/top", "/shift"]},
+            "full": {"price": PRICE_BRIEF, "routes": ["/sentiment", "/brief"]},
+        },
+        "price_lite": PRICE_LITE,
+        "price_brief": PRICE_BRIEF,
+        "notes": (
+            "Lite /top+/shift align with Bazaar discovery indexes at $0.01; "
+            "full Grok X-sentiment /sentiment+/brief at $0.05."
+        ),
+    }
+
+
 @app.get("/sample")
 async def sample():
     return SAMPLE_PAYLOAD
@@ -513,9 +536,9 @@ async def health():
     return {
         "status": "ok",
         "routes": {
-            "free": ["/", "/health", "/sample", "/catalog", "/docs"],
-            "paid_lite": ["/sentiment"],
-            "paid_brief": ["/brief", "/shift", "/top"],
+            "free": ["/", "/health", "/sample", "/catalog", "/pricing", "/docs"],
+            "paid_lite": ["/top", "/shift"],
+            "paid_brief": ["/sentiment", "/brief"],
         },
         "price_lite": PRICE_LITE,
         "price_brief": PRICE_BRIEF,
@@ -535,7 +558,7 @@ async def sentiment(request: Request):
     if isinstance(data, JSONResponse):
         return data
     out = dict(data)
-    out["tier"] = "lite"
+    out["tier"] = "sentiment"
     return out
 
 

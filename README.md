@@ -8,17 +8,18 @@ Agent-native Polymarket/Kalshi sentiment from live X chatter. Settles in USDC on
 
 | Route | Price | Notes |
 |-------|-------|-------|
-| `GET /`, `/health`, `/sample`, `/catalog` | free | Discovery / probe |
-| `GET /sentiment?q=` | **$0.01** | Lite score (-100..100) |
+| `GET /`, `/health`, `/sample`, `/catalog`, `/pricing` | free | Discovery / probe |
+| `GET /top` | **$0.01** | Top 3 markets by X buzz (lite discovery) |
+| `GET /shift?q=` | **$0.01** | Delta vs prior cache (lite discovery) |
+| `GET /sentiment?q=` | **$0.05** | Full Grok X-sentiment score (-100..100) |
 | `GET /brief?q=` | **$0.05** | Score + shift + summary |
-| `GET /shift?q=` | **$0.05** | Delta vs prior cache |
-| `GET /top` | **$0.05** | Top 3 markets by X buzz |
 
 ## Quick probe
 
 ```bash
 curl -s https://prediction-bot-iggf.onrender.com/health
 curl -s https://prediction-bot-iggf.onrender.com/catalog
+curl -s https://prediction-bot-iggf.onrender.com/pricing
 python demo/pay_once.py   # shows free routes + unpaid 402
 ```
 
@@ -26,8 +27,8 @@ python demo/pay_once.py   # shows free routes + unpaid 402
 
 - `XAI_API_KEY` — required
 - `PAY_TO_ADDRESS` — USDC receive address on Base
-- `PRICE_LITE` — default `$0.01`
-- `PRICE_BRIEF` / `PRICE` — default `$0.05`
+- `PRICE_LITE` — default `$0.01` (applied to `/top`, `/shift`)
+- `PRICE_BRIEF` / `PRICE` — default `$0.05` (applied to `/sentiment`, `/brief`)
 - `PUBLIC_BASE_URL` — public service URL for catalog links
 - Optional caps: `GROK_COST_USD`, `CALLER_CAP_USD`, `CALLER_GROK_PER_HOUR`, `GLOBAL_GROK_PER_HOUR`
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hit free discovery routes, then show unpaid /sentiment returns HTTP 402.
+"""Hit free discovery routes, then show unpaid /top returns HTTP 402.
 
 Live settlement needs an x402-capable wallet client (CDP / x402 fetch).
 """
@@ -36,21 +36,20 @@ def get(path: str):
 
 def main() -> int:
     print(f"base={BASE}")
-    for path in ("/health", "/catalog", "/sample"):
+    for path in ("/health", "/catalog", "/pricing", "/sample"):
         code, data = get(path)
         print(f"\nGET {path} -> {code}")
         print(json.dumps(data, indent=2)[:800] if not isinstance(data, str) else data[:800])
 
-    q = urllib.parse.quote("Will Bitcoin hit 150k in 2026")
-    code, data = get(f"/sentiment?q={q}")
-    print(f"\nGET /sentiment (unpaid expect 402) -> {code}")
+    code, data = get("/top")
+    print(f"\nGET /top (unpaid expect 402) -> {code}")
     print(json.dumps(data, indent=2)[:1200] if not isinstance(data, str) else data[:1200])
     if code != 402:
-        print("WARN: expected HTTP 402 for unpaid /sentiment", file=sys.stderr)
+        print("WARN: expected HTTP 402 for unpaid /top", file=sys.stderr)
         return 1
     print(
         "\nNext: retry with an x402 payment header. "
-        "Lite /sentiment is $0.01; /brief /shift /top are $0.05."
+        "Lite /top+/shift are $0.01; full /sentiment+/brief are $0.05."
     )
     return 0
 
