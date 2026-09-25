@@ -2,7 +2,7 @@
 
 Agent-native Polymarket/Kalshi sentiment from live X chatter. Settles in USDC on Base via HTTP 402.
 
-**Live:** https://prediction-bot-iggf.onrender.com
+**Live:** https://prediction-bot-iggf.onrender.com · [About](https://prediction-bot-iggf.onrender.com/about) · [llms.txt](https://prediction-bot-iggf.onrender.com/llms.txt) · [API docs](https://prediction-bot-iggf.onrender.com/docs)
 
 ## Price ladder
 
