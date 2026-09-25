@@ -4,117 +4,188 @@ import re
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from openai import OpenAI
 
-from cdp.x402 import create_facilitator_config
-from x402.extensions.bazaar import (
-    OutputConfig,
-    bazaar_resource_server_extension,
-    declare_discovery_extension,
-)
-from x402.http import HTTPFacilitatorClient, PaymentOption
-from x402.http.middleware.fastapi import PaymentMiddlewareASGI
-from x402.http.types import RouteConfig
-from x402.mechanisms.evm.exact import ExactEvmServerScheme
-from x402.server import x402ResourceServer
-
-app = FastAPI(title="Prediction Market Sentiment")
-
-XAI_KEY = os.environ["XAI_API_KEY"]
-PAY_TO = os.environ["PAY_TO_ADDRESS"]
-# Default above typical Grok+x_search cost so a cache miss is not a loss.
-PRICE = os.environ.get("PRICE", "$0.05")
+# --- config -----------------------------------------------------------------
+TEST_MODE = os.environ.get("TEST_MODE", "").lower() in ("1", "true", "yes")
+XAI_KEY = os.environ.get("XAI_API_KEY", "test" if TEST_MODE else "")
+if not TEST_MODE and not XAI_KEY:
+    raise RuntimeError("XAI_API_KEY is required")
+PAY_TO = os.environ.get("PAY_TO_ADDRESS", "0x0000000000000000000000000000000000000001")
+PRICE_LITE = os.environ.get("PRICE_LITE", "$0.01")
+PRICE_BRIEF = os.environ.get("PRICE_BRIEF", os.environ.get("PRICE", "$0.05"))
+PRICE = PRICE_BRIEF  # backward compatible
 NETWORK = "eip155:8453"
 GROK_COST = float(os.environ.get("GROK_COST_USD", "0.02"))
 CALLER_CAP_USD = float(os.environ.get("CALLER_CAP_USD", "0.40"))
 CALLER_CAP = int(os.environ.get("CALLER_GROK_PER_HOUR", "20"))
 GLOBAL_CAP = int(os.environ.get("GLOBAL_GROK_PER_HOUR", "60"))
+PUBLIC_BASE = os.environ.get(
+    "PUBLIC_BASE_URL", "https://prediction-bot-iggf.onrender.com"
+).rstrip("/")
 
-_price_usd = float(PRICE.replace("$", "").strip() or "0")
-if _price_usd < GROK_COST:
+_lite_usd = float(PRICE_LITE.replace("$", "").strip() or "0")
+_brief_usd = float(PRICE_BRIEF.replace("$", "").strip() or "0")
+if _brief_usd < GROK_COST:
     print(
-        f"ALERT PRICE {_price_usd} < GROK_COST {GROK_COST}: "
-        "each cache miss loses money. Raise PRICE or lower GROK_COST_USD."
+        f"ALERT PRICE_BRIEF {_brief_usd} < GROK_COST {GROK_COST}: "
+        "each cache miss loses money. Raise PRICE_BRIEF or lower GROK_COST_USD."
+    )
+if _lite_usd < GROK_COST:
+    print(
+        f"ALERT PRICE_LITE {_lite_usd} < GROK_COST {GROK_COST}: "
+        "lite path relies on cache; monitor margins."
     )
 
-client = OpenAI(api_key=XAI_KEY, base_url="https://api.x.ai/v1")
+app = FastAPI(
+    title="Prediction Market X Sentiment (x402)",
+    description=(
+        "Agent-native Polymarket/Kalshi sentiment from live X chatter. "
+        "Pay USDC on Base via HTTP 402. Free: /, /health, /sample, /catalog. "
+        "Lite $0.01: /sentiment. Brief $0.05: /brief, /shift, /top."
+    ),
+    version="1.1.0",
+)
 
-server = x402ResourceServer(HTTPFacilitatorClient(create_facilitator_config()))
-server.register(NETWORK, ExactEvmServerScheme())
-server.register_extension(bazaar_resource_server_extension)
+client = OpenAI(api_key=XAI_KEY or "test", base_url="https://api.x.ai/v1")
 
-
-def pay_route(description, example, input_schema=None, input_example=None):
-    ext_kw = dict(output=OutputConfig(example=example))
-    if input_schema:
-        ext_kw["input"] = input_example or {}
-        ext_kw["input_schema"] = input_schema
-    return RouteConfig(
-        accepts=[PaymentOption(scheme="exact", pay_to=PAY_TO, price=PRICE, network=NETWORK)],
-        mime_type="application/json",
-        description=description,
-        extensions=declare_discovery_extension(**ext_kw),
+# Payment / Bazaar wiring (skipped in TEST_MODE so unit tests need no secrets)
+routes = {}
+if not TEST_MODE:
+    from cdp.x402 import create_facilitator_config
+    from x402.extensions.bazaar import (
+        OutputConfig,
+        bazaar_resource_server_extension,
+        declare_discovery_extension,
     )
+    from x402.http import HTTPFacilitatorClient, PaymentOption
+    from x402.http.middleware.fastapi import PaymentMiddlewareASGI
+    from x402.http.types import RouteConfig
+    from x402.mechanisms.evm.exact import ExactEvmServerScheme
+    from x402.server import x402ResourceServer
 
+    server = x402ResourceServer(HTTPFacilitatorClient(create_facilitator_config()))
+    server.register(NETWORK, ExactEvmServerScheme())
+    server.register_extension(bazaar_resource_server_extension)
 
-q_schema = {
-    "properties": {
-        "q": {
-            "type": "string",
-            "description": "Prediction market question from Polymarket or Kalshi",
-        }
-    },
-    "required": ["q"],
-}
-
-routes = {
-    "GET /sentiment": pay_route(
-        "Sentiment score for a Polymarket or Kalshi market question",
-        {
-            "score": 12,
-            "catalyst": "ETF inflows",
-            "volume_signal": "rising",
-            "question": "Will Bitcoin hit 150k in 2026",
-            "scored_at": "2026-09-22T00:00:00+00:00",
-        },
-        q_schema,
-        {"q": "Will Bitcoin hit 150k in 2026"},
-    ),
-    "GET /shift": pay_route(
-        "Sentiment now vs last cached score for a prediction market question",
-        {
-            "question": "Will Bitcoin hit 150k in 2026",
-            "score_now": 12,
-            "score_before": -4,
-            "shift": 16,
-            "catalyst": "ETF inflows",
-            "scored_at": "2026-09-22T00:00:00+00:00",
-        },
-        q_schema,
-        {"q": "Will Bitcoin hit 150k in 2026"},
-    ),
-    "GET /top": pay_route(
-        "Three prediction markets with the largest current X sentiment",
-        {
-            "markets": [
-                {
-                    "question": "Will Bitcoin hit 150k in 2026",
-                    "score": 12,
-                    "catalyst": "ETF inflows",
-                    "volume_signal": "rising",
-                }
+    def pay_route(description, example, price, input_schema=None, input_example=None):
+        ext_kw = dict(output=OutputConfig(example=example))
+        if input_schema:
+            ext_kw["input"] = input_example or {}
+            ext_kw["input_schema"] = input_schema
+        return RouteConfig(
+            accepts=[
+                PaymentOption(
+                    scheme="exact", pay_to=PAY_TO, price=price, network=NETWORK
+                )
             ],
-            "scored_at": "2026-09-22T00:00:00+00:00",
-        },
-    ),
-}
-app.add_middleware(PaymentMiddlewareASGI, routes=routes, server=server)
+            mime_type="application/json",
+            description=description,
+            extensions=declare_discovery_extension(**ext_kw),
+        )
 
-# CACHE[key] = (unix_ts, payload) — current score
-# PREV[key] = payload — score displaced on the last refresh (for /shift)
+    q_schema = {
+        "properties": {
+            "q": {
+                "type": "string",
+                "description": (
+                    "Exact Polymarket or Kalshi market question text "
+                    "(e.g. Will Bitcoin hit 150k in 2026)"
+                ),
+            }
+        },
+        "required": ["q"],
+    }
+
+    SENTIMENT_EXAMPLE = {
+        "score": 12,
+        "catalyst": "ETF inflows",
+        "volume_signal": "rising",
+        "question": "Will Bitcoin hit 150k in 2026",
+        "scored_at": "2026-09-22T00:00:00+00:00",
+        "tier": "lite",
+    }
+    BRIEF_EXAMPLE = {
+        "question": "Will Bitcoin hit 150k in 2026",
+        "score": 12,
+        "catalyst": "ETF inflows",
+        "volume_signal": "rising",
+        "shift": 16,
+        "score_before": -4,
+        "summary": "X chatter turned more bullish after ETF inflow headlines.",
+        "scored_at": "2026-09-22T00:00:00+00:00",
+        "tier": "brief",
+    }
+    SHIFT_EXAMPLE = {
+        "question": "Will Bitcoin hit 150k in 2026",
+        "score_now": 12,
+        "score_before": -4,
+        "shift": 16,
+        "catalyst": "ETF inflows",
+        "scored_at": "2026-09-22T00:00:00+00:00",
+    }
+    TOP_EXAMPLE = {
+        "markets": [
+            {
+                "question": "Will Bitcoin hit 150k in 2026",
+                "score": 12,
+                "catalyst": "ETF inflows",
+                "volume_signal": "rising",
+            }
+        ],
+        "scored_at": "2026-09-22T00:00:00+00:00",
+    }
+
+    routes = {
+        "GET /sentiment": pay_route(
+            (
+                "Polymarket/Kalshi X (Twitter) sentiment score for agents — "
+                "Grok live search returns score -100..100, catalyst, and volume_signal. "
+                "Lite tier for discovery and high-frequency polls."
+            ),
+            SENTIMENT_EXAMPLE,
+            PRICE_LITE,
+            q_schema,
+            {"q": "Will Bitcoin hit 150k in 2026"},
+        ),
+        "GET /brief": pay_route(
+            (
+                "Prediction-market briefing for AI agents: X sentiment score, "
+                "catalyst, volume_signal, shift vs prior cache, and a one-line summary. "
+                "Polymarket and Kalshi questions. Richer than /sentiment."
+            ),
+            BRIEF_EXAMPLE,
+            PRICE_BRIEF,
+            q_schema,
+            {"q": "Will Bitcoin hit 150k in 2026"},
+        ),
+        "GET /shift": pay_route(
+            (
+                "Sentiment shift detector for Polymarket/Kalshi: current X score "
+                "minus last cached score — catch narrative flips between agent polls."
+            ),
+            SHIFT_EXAMPLE,
+            PRICE_BRIEF,
+            q_schema,
+            {"q": "Will Bitcoin hit 150k in 2026"},
+        ),
+        "GET /top": pay_route(
+            (
+                "Top 3 Polymarket/Kalshi markets by live X (Twitter) discussion "
+                "intensity with sentiment scores — agent discovery scan."
+            ),
+            TOP_EXAMPLE,
+            PRICE_BRIEF,
+        ),
+    }
+    app.add_middleware(PaymentMiddlewareASGI, routes=routes, server=server)
+
+# CACHE[key] = (unix_ts, payload)
+# PREV[key] = payload displaced on last refresh (for /shift)
 CACHE = {}
 PREV = {}
 TTL = 300
@@ -122,9 +193,85 @@ WINDOW = 3600
 usage = defaultdict(list)
 blocked = {}
 
+SAMPLE_PAYLOAD = {
+    "demo": True,
+    "note": (
+        "Free sample — not live Grok. Pay /sentiment ($0.01) or /brief ($0.05) "
+        "for live X scoring."
+    ),
+    "example_request": f"{PUBLIC_BASE}/sentiment?q=Will%20Bitcoin%20hit%20150k%20in%202026",
+    "example_response": {
+        "score": 12,
+        "catalyst": "ETF inflows",
+        "volume_signal": "rising",
+        "question": "Will Bitcoin hit 150k in 2026",
+        "scored_at": "2026-09-22T00:00:00+00:00",
+        "tier": "lite",
+    },
+}
+
+
+def catalog_body() -> dict:
+    return {
+        "service": "prediction-market-x-sentiment",
+        "base_url": PUBLIC_BASE,
+        "network": NETWORK,
+        "asset": "USDC",
+        "pay_to": PAY_TO,
+        "discovery": {
+            "keywords": [
+                "polymarket",
+                "kalshi",
+                "prediction market",
+                "sentiment",
+                "x twitter",
+                "grok",
+                "x402",
+                "agent",
+            ],
+            "bazaar": "Indexed via CDP facilitator when paid routes settle",
+        },
+        "free": [
+            {"method": "GET", "path": "/", "price": "$0", "desc": "Service index for agents"},
+            {"method": "GET", "path": "/health", "price": "$0", "desc": "Liveness + price ladder"},
+            {"method": "GET", "path": "/sample", "price": "$0", "desc": "Static example JSON (no Grok)"},
+            {"method": "GET", "path": "/catalog", "price": "$0", "desc": "Machine-readable route catalog"},
+        ],
+        "paid": [
+            {
+                "method": "GET",
+                "path": "/sentiment",
+                "price": PRICE_LITE,
+                "query": {"q": "market question"},
+                "desc": "Lite X sentiment score -100..100",
+            },
+            {
+                "method": "GET",
+                "path": "/brief",
+                "price": PRICE_BRIEF,
+                "query": {"q": "market question"},
+                "desc": "Score + shift + one-line summary",
+            },
+            {
+                "method": "GET",
+                "path": "/shift",
+                "price": PRICE_BRIEF,
+                "query": {"q": "market question"},
+                "desc": "Delta vs prior cached score",
+            },
+            {
+                "method": "GET",
+                "path": "/top",
+                "price": PRICE_BRIEF,
+                "desc": "Three hottest markets on X right now",
+            },
+        ],
+        "docs": f"{PUBLIC_BASE}/docs",
+        "demo_client": "See demo/pay_once.py in the GitHub repo",
+    }
+
 
 def caller_id(request: Request) -> str:
-    # Prefer edge-provided client IP when behind a reverse proxy.
     for header in ("cf-connecting-ip", "x-real-ip"):
         val = request.headers.get(header)
         if val:
@@ -141,6 +288,8 @@ def prune(bucket):
 
 
 def allow_grok(request: Request):
+    if TEST_MODE:
+        return True, "ok"
     cid = caller_id(request)
     if cid in blocked and time.time() < blocked[cid]:
         return False, "circuit_open"
@@ -157,13 +306,14 @@ def allow_grok(request: Request):
 
 
 def mark_grok(request: Request):
+    if TEST_MODE:
+        return
     now = time.time()
     usage[caller_id(request)].append(now)
     usage["__global__"].append(now)
 
 
-def normalize_score_payload(data: dict, question: str | None = None) -> dict:
-    """Clamp fields so callers always get a stable shape."""
+def normalize_score_payload(data: dict, question: Optional[str] = None) -> dict:
     if not isinstance(data, dict):
         data = {}
     out = dict(data)
@@ -184,10 +334,20 @@ def normalize_score_payload(data: dict, question: str | None = None) -> dict:
 
 
 def grok_json(prompt: str):
-    """
-    Returns (data_dict_or_None, error_code_or_None).
-    Never raises — callers have already paid.
-    """
+    if TEST_MODE:
+        return {
+            "score": 7,
+            "catalyst": "unit-test fixture",
+            "volume_signal": "flat",
+            "markets": [
+                {
+                    "question": "Will Bitcoin hit 150k in 2026",
+                    "score": 7,
+                    "catalyst": "unit-test fixture",
+                    "volume_signal": "flat",
+                }
+            ],
+        }, None
     try:
         resp = client.responses.create(
             model="grok-4.7",
@@ -200,7 +360,6 @@ def grok_json(prompt: str):
 
     text = getattr(resp, "output_text", None) or ""
     if not text and getattr(resp, "output", None):
-        # Fallback: stitch text parts if output_text is empty
         try:
             parts = []
             for item in resp.output:
@@ -227,7 +386,6 @@ def grok_json(prompt: str):
 
 
 def commit_score(key: str, data: dict, now: float):
-    """Write CACHE; keep the displaced payload in PREV for /shift."""
     old = CACHE.get(key)
     if old:
         PREV[key] = old[1]
@@ -235,7 +393,6 @@ def commit_score(key: str, data: dict, now: float):
 
 
 def paid_unavailable(question: str, reason: str):
-    """Paid request that cannot be fulfilled — never a raw 500."""
     return JSONResponse(
         {
             "error": reason,
@@ -262,13 +419,13 @@ def score_market(question: str, request: Request):
         return paid_unavailable(question, reason)
 
     prompt = (
-        f"Search X for recent posts about this prediction market:\n\"{question}\"\n\n"
+        f'Search X for recent posts about this prediction market:\n"{question}"\n\n'
         "Return ONLY valid JSON, no markdown:\n"
         '{"score": <int -100 to 100>, "catalyst": "<one sentence>", '
         '"volume_signal": "<rising|falling|flat>"}'
     )
     raw, err = grok_json(prompt)
-    mark_grok(request)  # xAI may have billed even on parse failure
+    mark_grok(request)
 
     if err or raw is None:
         if hit:
@@ -283,25 +440,8 @@ def score_market(question: str, request: Request):
     return data
 
 
-@app.get("/sentiment")
-async def sentiment(request: Request):
-    q = request.query_params.get("q", "").strip()
-    if not q:
-        return {"error": "pass ?q=your+market+question"}
-    return score_market(q, request)
-
-
-@app.get("/shift")
-async def shift(request: Request):
-    q = request.query_params.get("q", "").strip()
-    if not q:
-        return {"error": "pass ?q=your+market+question"}
+def build_shift_payload(q: str, now_data: dict) -> dict:
     key = q.strip().lower()
-
-    now_data = score_market(q, request)
-    if isinstance(now_data, JSONResponse):
-        return now_data
-
     prev = PREV.get(key)
     if not prev:
         return {
@@ -314,7 +454,6 @@ async def shift(request: Request):
             "note": "no_prior_score",
             "degraded": now_data.get("degraded"),
         }
-
     return {
         "question": q,
         "score_now": now_data["score"],
@@ -325,6 +464,101 @@ async def shift(request: Request):
         "prior_scored_at": prev.get("scored_at"),
         "degraded": now_data.get("degraded"),
     }
+
+
+def build_brief(q: str, now_data: dict) -> dict:
+    shift = build_shift_payload(q, now_data)
+    catalyst = now_data.get("catalyst") or "n/a"
+    if shift["shift"] > 0:
+        direction = "more bullish"
+    elif shift["shift"] < 0:
+        direction = "more bearish"
+    else:
+        direction = "unchanged"
+    summary = (
+        f"X sentiment score {now_data['score']} ({direction} vs prior "
+        f"{shift['score_before']}; shift {shift['shift']:+d}). Catalyst: {catalyst}"
+    )
+    return {
+        "question": q,
+        "score": now_data["score"],
+        "catalyst": catalyst,
+        "volume_signal": now_data.get("volume_signal", "flat"),
+        "shift": shift["shift"],
+        "score_before": shift["score_before"],
+        "summary": summary,
+        "scored_at": now_data.get("scored_at"),
+        "degraded": now_data.get("degraded"),
+        "tier": "brief",
+    }
+
+
+@app.get("/")
+async def root():
+    return catalog_body()
+
+
+@app.get("/catalog")
+async def catalog():
+    return catalog_body()
+
+
+@app.get("/sample")
+async def sample():
+    return SAMPLE_PAYLOAD
+
+
+@app.get("/health")
+async def health():
+    return {
+        "status": "ok",
+        "routes": {
+            "free": ["/", "/health", "/sample", "/catalog", "/docs"],
+            "paid_lite": ["/sentiment"],
+            "paid_brief": ["/brief", "/shift", "/top"],
+        },
+        "price_lite": PRICE_LITE,
+        "price_brief": PRICE_BRIEF,
+        "price": PRICE_BRIEF,
+        "cache_ttl_sec": TTL,
+        "network": NETWORK,
+        "test_mode": TEST_MODE,
+    }
+
+
+@app.get("/sentiment")
+async def sentiment(request: Request):
+    q = request.query_params.get("q", "").strip()
+    if not q:
+        return {"error": "pass ?q=your+market+question"}
+    data = score_market(q, request)
+    if isinstance(data, JSONResponse):
+        return data
+    out = dict(data)
+    out["tier"] = "lite"
+    return out
+
+
+@app.get("/brief")
+async def brief(request: Request):
+    q = request.query_params.get("q", "").strip()
+    if not q:
+        return {"error": "pass ?q=your+market+question"}
+    data = score_market(q, request)
+    if isinstance(data, JSONResponse):
+        return data
+    return build_brief(q, data)
+
+
+@app.get("/shift")
+async def shift(request: Request):
+    q = request.query_params.get("q", "").strip()
+    if not q:
+        return {"error": "pass ?q=your+market+question"}
+    now_data = score_market(q, request)
+    if isinstance(now_data, JSONResponse):
+        return now_data
+    return build_shift_payload(q, now_data)
 
 
 @app.get("/top")
@@ -371,13 +605,3 @@ async def top(request: Request):
     }
     CACHE["__top__"] = (now, data)
     return data
-
-
-@app.get("/health")
-async def health():
-    return {
-        "status": "ok",
-        "routes": ["/sentiment", "/shift", "/top"],
-        "price": PRICE,
-        "cache_ttl_sec": TTL,
-    }
