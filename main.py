@@ -13,7 +13,7 @@ from openai import OpenAI
 
 from landing import about_html, llms_txt
 from odds import FIXTURE as ODDS_FIXTURE
-from odds import market_odds
+from odds import ensure_kalshi_index, fixture_kalshi, kalshi_index_status, market_odds
 from schemas import (
     Q_DESCRIPTION,
     Q_EXAMPLE,
@@ -79,6 +79,9 @@ app = FastAPI(
 Q_PARAM = Query("", description=Q_DESCRIPTION, examples=[Q_EXAMPLE])
 
 client = OpenAI(api_key=XAI_KEY or "test", base_url="https://api.x.ai/v1")
+
+if not TEST_MODE:
+    ensure_kalshi_index()  # warm the Kalshi open-events index in the background
 
 # Payment / Bazaar wiring (skipped in TEST_MODE so unit tests need no secrets)
 routes = {}
@@ -194,7 +197,7 @@ if not TEST_MODE:
             (
                 "Prediction-market briefing for AI agents: X sentiment score, "
                 "catalyst, volume_signal, shift vs prior cache, a one-line summary, "
-                "and live Polymarket odds (Yes price) for the matched market. "
+                "and live Polymarket and Kalshi odds (Yes price) for the matched market. "
                 "Polymarket and Kalshi questions. Full brief at $0.05."
             ),
             BRIEF_EXAMPLE,
@@ -601,6 +604,7 @@ async def health():
         "cache_ttl_sec": TTL,
         "network": NETWORK,
         "test_mode": TEST_MODE,
+        "odds_index": kalshi_index_status(),
     }
 
 
@@ -637,10 +641,12 @@ async def brief(request: Request, q: str = Q_PARAM):
         return data
     out = build_brief(q, data)
     fetch = (lambda _q: ODDS_FIXTURE) if TEST_MODE else None
-    out["odds"] = await run_in_threadpool(market_odds, q, fetch)
-    pm = out["odds"].get("polymarket")
-    if pm:
-        out["summary"] += f" Polymarket Yes: {pm['implied_prob_pct']}%."
+    kalshi = fixture_kalshi if TEST_MODE else None
+    out["odds"] = await run_in_threadpool(market_odds, q, fetch, kalshi)
+    for venue, label in (("polymarket", "Polymarket"), ("kalshi", "Kalshi")):
+        found = out["odds"].get(venue)
+        if found:
+            out["summary"] += f" {label} Yes: {found['implied_prob_pct']}%."
     return out
 
 
