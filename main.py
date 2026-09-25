@@ -4,11 +4,26 @@ import re
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Union
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from openai import OpenAI
+
+from schemas import (
+    Q_DESCRIPTION,
+    Q_EXAMPLE,
+    BriefOut,
+    CatalogOut,
+    HealthOut,
+    MissingQueryOut,
+    PricingOut,
+    SampleOut,
+    SentimentOut,
+    ShiftOut,
+    TopOut,
+    paid_responses,
+)
 
 # --- config -----------------------------------------------------------------
 TEST_MODE = os.environ.get("TEST_MODE", "").lower() in ("1", "true", "yes")
@@ -48,8 +63,16 @@ app = FastAPI(
         "Pay USDC on Base via HTTP 402. Free: /, /health, /sample, /catalog, /pricing. "
         "Lite $0.01: /top, /shift. Full $0.05: /sentiment, /brief."
     ),
-    version="1.1.0",
+    version="1.2.0",
+    servers=[{"url": PUBLIC_BASE}],
+    openapi_tags=[
+        {"name": "free", "description": "Discovery routes, no payment"},
+        {"name": "paid-lite", "description": f"x402, {PRICE_LITE} USDC on Base"},
+        {"name": "paid-full", "description": f"x402, {PRICE_BRIEF} USDC on Base"},
+    ],
 )
+
+Q_PARAM = Query("", description=Q_DESCRIPTION, examples=[Q_EXAMPLE])
 
 client = OpenAI(api_key=XAI_KEY or "test", base_url="https://api.x.ai/v1")
 
@@ -271,6 +294,10 @@ def catalog_body() -> dict:
         ],
         "docs": f"{PUBLIC_BASE}/docs",
         "demo_client": "See demo/pay_once.py in the GitHub repo",
+        "mcp": (
+            "uvx --from git+https://github.com/wballztrading1/Prediction-bot"
+            "#subdirectory=mcp_server prediction-bot-mcp"
+        ),
     }
 
 
@@ -496,17 +523,17 @@ def build_brief(q: str, now_data: dict) -> dict:
     }
 
 
-@app.get("/")
+@app.get("/", tags=["free"], summary="Service index for agents", responses={200: {"model": CatalogOut}})
 async def root():
     return catalog_body()
 
 
-@app.get("/catalog")
+@app.get("/catalog", tags=["free"], summary="Machine-readable route catalog", responses={200: {"model": CatalogOut}})
 async def catalog():
     return catalog_body()
 
 
-@app.get("/pricing")
+@app.get("/pricing", tags=["free"], summary="USDC price ladder", responses={200: {"model": PricingOut}})
 async def pricing():
     """Explicit price ladder for agents and humans."""
     return {
@@ -526,12 +553,12 @@ async def pricing():
     }
 
 
-@app.get("/sample")
+@app.get("/sample", tags=["free"], summary="Static example response (no Grok)", responses={200: {"model": SampleOut}})
 async def sample():
     return SAMPLE_PAYLOAD
 
 
-@app.get("/health")
+@app.get("/health", tags=["free"], summary="Liveness and price ladder", responses={200: {"model": HealthOut}})
 async def health():
     return {
         "status": "ok",
@@ -549,9 +576,14 @@ async def health():
     }
 
 
-@app.get("/sentiment")
-async def sentiment(request: Request):
-    q = request.query_params.get("q", "").strip()
+@app.get(
+    "/sentiment",
+    tags=["paid-full"],
+    summary="X sentiment score for a Polymarket/Kalshi market",
+    responses=paid_responses(Union[SentimentOut, MissingQueryOut], PRICE_BRIEF),
+)
+async def sentiment(request: Request, q: str = Q_PARAM):
+    q = q.strip()
     if not q:
         return {"error": "pass ?q=your+market+question"}
     data = score_market(q, request)
@@ -562,9 +594,14 @@ async def sentiment(request: Request):
     return out
 
 
-@app.get("/brief")
-async def brief(request: Request):
-    q = request.query_params.get("q", "").strip()
+@app.get(
+    "/brief",
+    tags=["paid-full"],
+    summary="Score + shift + one-line summary for a market",
+    responses=paid_responses(Union[BriefOut, MissingQueryOut], PRICE_BRIEF),
+)
+async def brief(request: Request, q: str = Q_PARAM):
+    q = q.strip()
     if not q:
         return {"error": "pass ?q=your+market+question"}
     data = score_market(q, request)
@@ -573,9 +610,14 @@ async def brief(request: Request):
     return build_brief(q, data)
 
 
-@app.get("/shift")
-async def shift(request: Request):
-    q = request.query_params.get("q", "").strip()
+@app.get(
+    "/shift",
+    tags=["paid-lite"],
+    summary="Sentiment change vs previous cached score",
+    responses=paid_responses(Union[ShiftOut, MissingQueryOut], PRICE_LITE),
+)
+async def shift(request: Request, q: str = Q_PARAM):
+    q = q.strip()
     if not q:
         return {"error": "pass ?q=your+market+question"}
     now_data = score_market(q, request)
@@ -584,7 +626,12 @@ async def shift(request: Request):
     return build_shift_payload(q, now_data)
 
 
-@app.get("/top")
+@app.get(
+    "/top",
+    tags=["paid-lite"],
+    summary="Three most-discussed markets on X with scores",
+    responses=paid_responses(TopOut, PRICE_LITE),
+)
 async def top(request: Request):
     hit = CACHE.get("__top__")
     now = datetime.now(timezone.utc).timestamp()
