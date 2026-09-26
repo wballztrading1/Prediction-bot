@@ -81,3 +81,11 @@ def test_errors_are_recorded_not_raised(tmp_path):
 def test_parse_json_object():
     assert sl.parse_json_object('Here: {"score": 5} done') == {"score": 5}
     assert sl.parse_json_object("no json") is None
+
+
+def test_prompt_excludes_market_odds_chatter():
+    prompt = sl.build_prompt("Will X happen?")
+    assert '"Will X happen?"' in prompt
+    assert "Ignore posts that only discuss betting odds" in prompt
+    assert "do not mention market odds" in prompt
+    assert sl.PROMPT_VERSION == "v2"
