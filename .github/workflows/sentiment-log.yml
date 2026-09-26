@@ -1,0 +1,40 @@
+name: sentiment-log
+
+# 4-week signal test: once a day, record X sentiment (Grok) and Polymarket odds
+# for 5 tracked markets into data/sentiment_log.csv. Capped at 160 Grok calls per
+# month (about $3-4). Read-only for the live API: no payments, no deploys.
+
+on:
+  schedule:
+    - cron: "17 14 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sentiment-log
+  cancel-in-progress: false
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install openai httpx
+      - name: Score and record
+        env:
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+        run: python scripts/sentiment_logger.py
+      - name: Commit data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/sentiment_log.csv
+          git diff --cached --quiet || git commit -m "Sentiment log: daily snapshot"
+          git push
