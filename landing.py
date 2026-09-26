@@ -61,7 +61,7 @@ footer { margin-top:48px; color:var(--muted); font-size:.85rem; }
 <tr><td><code>/top</code></td><td>{{PRICE_LITE}}</td><td>3 most-discussed markets on X, each scored</td></tr>
 <tr><td><code>/shift?q=</code></td><td>{{PRICE_LITE}}</td><td>Change in sentiment since the last score</td></tr>
 <tr><td><code>/sentiment?q=</code></td><td>{{PRICE_BRIEF}}</td><td>Score from -100 to 100, catalyst, volume signal</td></tr>
-<tr><td><code>/brief?q=</code></td><td>{{PRICE_BRIEF}}</td><td>Score, shift, one-line summary and live Polymarket odds</td></tr>
+<tr><td><code>/brief?q=</code></td><td>{{PRICE_BRIEF}}</td><td>Score, shift, one-line summary and live Polymarket + Kalshi odds</td></tr>
 </table>
 <p>Scores are cached for {{TTL}} seconds per market question.</p>
 
@@ -123,7 +123,7 @@ Base URL: {{BASE}}
 - GET /top ({{PRICE_LITE}}): 3 most-discussed Polymarket/Kalshi markets on X, each with score, catalyst, volume_signal
 - GET /shift?q=QUESTION ({{PRICE_LITE}}): score change vs the previous cached score
 - GET /sentiment?q=QUESTION ({{PRICE_BRIEF}}): score -100..100, catalyst, volume_signal
-- GET /brief?q=QUESTION ({{PRICE_BRIEF}}): score, catalyst, volume_signal, shift, one-line summary and live Polymarket odds (Yes price) for the matched market
+- GET /brief?q=QUESTION ({{PRICE_BRIEF}}): score, catalyst, volume_signal, shift, one-line summary and live Polymarket and Kalshi odds (Yes price) for the matched market
 
 q is the exact market question, e.g. "Will Bitcoin hit 150k in 2026". Scores are cached {{TTL}}s per question.
 
