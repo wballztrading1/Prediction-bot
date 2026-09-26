@@ -77,21 +77,36 @@ def parse_json_object(text: str) -> Optional[dict]:
     return parsed if isinstance(parsed, dict) else None
 
 
+PROMPT_VERSION = "v2"  # v2 from 2026-09-27: ignore posts about market odds (v1 rows: 2026-09-26)
+
+
+def build_prompt(question: str) -> str:
+    """Sentiment about the event itself, not about the market's own prices.
+
+    Without this, Grok often echoes Polymarket/Kalshi price moves, which would make
+    sentiment look like it tracks the odds when it is only repeating them.
+    """
+    return (
+        "Search X for recent posts about this prediction market:" + NL
+        + '"' + question + '"' + NL + NL
+        + "Score what people are saying about the underlying event itself. "
+        + "Ignore posts that only discuss betting odds, prediction-market prices or "
+        + "trading positions (Polymarket, Kalshi or similar), and do not mention "
+        + "market odds or prices in the catalyst." + NL + NL
+        + "Return ONLY valid JSON, no markdown:" + NL
+        + '{"score": <int -100 to 100>, "catalyst": "<one sentence about the event>", '
+        + '"volume_signal": "<rising|falling|flat>"}'
+    )
+
+
 def grok_score(question: str) -> dict:
-    """Same prompt as the live API's score_market()."""
+    """Score X sentiment for one market question with Grok live search."""
     from openai import OpenAI
 
     client = OpenAI(api_key=os.environ["XAI_API_KEY"], base_url="https://api.x.ai/v1")
-    prompt = (
-        "Search X for recent posts about this prediction market:" + NL
-        + '"' + question + '"' + NL + NL
-        + "Return ONLY valid JSON, no markdown:" + NL
-        + '{"score": <int -100 to 100>, "catalyst": "<one sentence>", '
-        + '"volume_signal": "<rising|falling|flat>"}'
-    )
     resp = client.responses.create(
         model=GROK_MODEL,
-        input=[{"role": "user", "content": prompt}],
+        input=[{"role": "user", "content": build_prompt(question)}],
         tools=[{"type": "x_search"}],
     )
     text = getattr(resp, "output_text", None) or ""
