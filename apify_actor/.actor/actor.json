@@ -1,0 +1,77 @@
+{
+    "actorSpecification": 1,
+    "name": "prediction-market-sentiment",
+    "title": "Prediction Market Sentiment (X + Polymarket + Kalshi)",
+    "description": "Score what X is saying about any prediction market with Grok live search, side by side with live Polymarket and Kalshi odds. One row per market question.",
+    "version": "0.1",
+    "buildTag": "latest",
+    "dockerfile": "../Dockerfile",
+    "dockerContextDir": "../..",
+    "readme": "../README.md",
+    "minMemoryMbytes": 256,
+    "maxMemoryMbytes": 1024,
+    "input": {
+        "title": "Prediction market sentiment",
+        "type": "object",
+        "schemaVersion": 1,
+        "properties": {
+            "questions": {
+                "title": "Market questions",
+                "type": "array",
+                "description": "Prediction-market questions to score, one per line (up to 25). Use the market's own wording for the best odds match, e.g. 'Will the Fed increase interest rates by 25 bps after the October 2026 meeting?'",
+                "editor": "stringList",
+                "maxItems": 25,
+                "prefill": [
+                    "Will the Fed increase interest rates by 25 bps after the October 2026 meeting?"
+                ]
+            },
+            "includeOdds": {
+                "title": "Include live odds",
+                "type": "boolean",
+                "description": "Add the closest matching open Polymarket and Kalshi markets and their current Yes prices.",
+                "default": true
+            },
+            "includeKalshi": {
+                "title": "Include Kalshi",
+                "type": "boolean",
+                "description": "Kalshi has no text search, so matching builds an index of open events. This adds about 2 minutes to a run. Turn off for faster Polymarket-only runs.",
+                "default": true
+            }
+        },
+        "required": ["questions"]
+    },
+    "storages": {
+        "dataset": {
+            "actorSpecification": 1,
+            "title": "Scored markets",
+            "views": {
+                "overview": {
+                    "title": "Overview",
+                    "transformation": {
+                        "fields": [
+                            "question",
+                            "score",
+                            "volume_signal",
+                            "polymarket_yes_pct",
+                            "kalshi_yes_pct",
+                            "catalyst",
+                            "error"
+                        ]
+                    },
+                    "display": {
+                        "component": "table",
+                        "properties": {
+                            "question": { "label": "Market question", "format": "text" },
+                            "score": { "label": "X sentiment (-100 to 100)", "format": "number" },
+                            "volume_signal": { "label": "Chatter volume", "format": "text" },
+                            "polymarket_yes_pct": { "label": "Polymarket Yes %", "format": "number" },
+                            "kalshi_yes_pct": { "label": "Kalshi Yes %", "format": "number" },
+                            "catalyst": { "label": "What X is talking about", "format": "text" },
+                            "error": { "label": "Error", "format": "text" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
