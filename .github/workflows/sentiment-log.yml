@@ -2,7 +2,7 @@ name: sentiment-log
 
 # 4-week signal test: once a day, record X sentiment (Grok) and Polymarket odds
 # for 5 tracked markets into data/sentiment_log.csv. One scored run per day and a
-# monthly dollar budget (LOGGER_BUDGET_USD, default $10). Read-only for the live
+# monthly dollar budget (LOGGER_BUDGET_USD, $20 here). Read-only for the live
 # API: no payments, no deploys.
 
 on:
@@ -31,6 +31,7 @@ jobs:
       - name: Score and record
         env:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          LOGGER_BUDGET_USD: "20"  # ~5 markets x 30 days at ~$0.10/call
         run: python scripts/sentiment_logger.py
       - name: Commit data
         run: |
