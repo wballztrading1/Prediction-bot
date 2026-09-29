@@ -9,6 +9,7 @@ COPY apify_actor/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY odds.py ./odds.py
+COPY grok_cost.py ./grok_cost.py
 COPY apify_actor/src ./src
 
 CMD ["python3", "-m", "src"]
