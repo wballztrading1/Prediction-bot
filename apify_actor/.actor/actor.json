@@ -40,6 +40,18 @@
         },
         "required": ["questions"]
     },
+    "output": {
+        "actorOutputSchemaVersion": 1,
+        "title": "Scored markets",
+        "properties": {
+            "results": {
+                "type": "string",
+                "title": "Scored markets",
+                "description": "One row per market: X sentiment score, catalyst, chatter volume and live Polymarket/Kalshi odds.",
+                "template": "{{links.apiDefaultDatasetUrl}}/items"
+            }
+        }
+    },
     "storages": {
         "dataset": {
             "actorSpecification": 1,

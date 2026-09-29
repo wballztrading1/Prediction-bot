@@ -88,6 +88,9 @@ def test_result_item_flattens_odds():
 def test_actor_packaging_is_consistent():
     spec = json.loads((ACTOR / ".actor" / "actor.json").read_text())
     assert spec["actorSpecification"] == 1
+    out = spec["output"]  # required by the Apify Store before publishing
+    assert out["actorOutputSchemaVersion"] == 1
+    assert out["properties"]["results"]["template"] == "{{links.apiDefaultDatasetUrl}}/items"
     assert (ACTOR / ".actor" / spec["dockerfile"]).resolve() == (ACTOR / "Dockerfile").resolve()
     assert (ACTOR / ".actor" / spec["dockerContextDir"]).resolve() == ROOT
     assert (ACTOR / ".actor" / spec["readme"]).resolve().exists()
