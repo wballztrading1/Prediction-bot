@@ -53,7 +53,8 @@ def test_grok_score_uses_x_search_and_normalizes():
     out = core.grok_score("Will X happen?", client)
     assert out == {"score": 100, "catalyst": "ETF flows", "volume_signal": "flat"}
     call = client.responses.calls[0]
-    assert call["tools"] == [{"type": "x_search"}]
+    assert call["tools"][0]["type"] == "x_search"
+    assert "from_date" in call["tools"][0]  # recent posts only (cost control)
     assert "Ignore posts that only discuss betting odds" in call["input"][0]["content"]
 
 
@@ -96,7 +97,7 @@ def test_actor_packaging_is_consistent():
     assert set(fields) <= set(sample)
 
     dockerfile = (ACTOR / "Dockerfile").read_text()
-    for path in ("apify_actor/requirements.txt", "odds.py", "apify_actor/src"):
+    for path in ("apify_actor/requirements.txt", "odds.py", "grok_cost.py", "apify_actor/src"):
         assert f"COPY {path} " in dockerfile
         assert (ROOT / path).exists()
     assert 'CMD ["python3", "-m", "src"]' in dockerfile

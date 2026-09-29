@@ -212,6 +212,6 @@ def paid_responses(model, price: str) -> dict:
         },
         503: {
             "model": UnavailableOut,
-            "description": "Payment accepted but scoring temporarily unavailable; retry shortly",
+            "description": "Scoring temporarily unavailable; no payment is taken (x402 settles only on success). Retry shortly",
         },
     }

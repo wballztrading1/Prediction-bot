@@ -5,12 +5,12 @@ and shapes one output row per question. Odds come from the repo's odds.py,
 which the Dockerfile copies next to this package.
 """
 import json
-import os
 from datetime import datetime, timezone
 from typing import Optional
 
+import grok_cost
+
 PROMPT_VERSION = "v2"
-GROK_MODEL = os.environ.get("GROK_MODEL", "grok-4.7")
 MAX_QUESTIONS = 25
 MAX_QUESTION_CHARS = 300
 NL = chr(10)
@@ -91,11 +91,7 @@ def response_text(resp) -> str:
 
 def grok_score(question: str, client) -> dict:
     """Normalized score for one question. Raises on API errors or unusable output."""
-    resp = client.responses.create(
-        model=GROK_MODEL,
-        input=[{"role": "user", "content": build_prompt(question)}],
-        tools=[{"type": "x_search"}],
-    )
+    resp = client.responses.create(**grok_cost.request_kwargs(build_prompt(question)))
     parsed = parse_json_object(response_text(resp))
     if parsed is None:
         raise ValueError("no_json")

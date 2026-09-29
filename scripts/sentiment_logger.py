@@ -18,9 +18,11 @@ from pathlib import Path
 from typing import Callable, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+import grok_cost  # noqa: E402  (shared Grok settings: model, search window, max turns)
+
 LOG_PATH = Path(os.environ.get("SENTIMENT_LOG_PATH", ROOT / "data" / "sentiment_log.csv"))
 MAX_GROK_CALLS_PER_MONTH = int(os.environ.get("MAX_GROK_CALLS_PER_MONTH", "160"))
-GROK_MODEL = os.environ.get("GROK_MODEL", "grok-4.7")
 GAMMA_MARKET_URL = "https://gamma-api.polymarket.com/markets/"
 NL = chr(10)
 
@@ -104,11 +106,10 @@ def grok_score(question: str) -> dict:
     from openai import OpenAI
 
     client = OpenAI(api_key=os.environ["XAI_API_KEY"], base_url="https://api.x.ai/v1")
-    resp = client.responses.create(
-        model=GROK_MODEL,
-        input=[{"role": "user", "content": build_prompt(question)}],
-        tools=[{"type": "x_search"}],
-    )
+    kwargs = grok_cost.request_kwargs(build_prompt(question))
+    resp = client.responses.create(**kwargs)
+    used = grok_cost.usage_summary(resp)
+    print(f"grok_cost usd={grok_cost.estimate_cost(used, kwargs['model'])} {used}")
     text = getattr(resp, "output_text", None) or ""
     if not text:
         parts = []
