@@ -40,7 +40,7 @@ PRICE_LITE = os.environ.get("PRICE_LITE", "$0.01")
 PRICE_BRIEF = os.environ.get("PRICE_BRIEF", os.environ.get("PRICE", "$0.05"))
 PRICE = PRICE_BRIEF  # backward compatible
 NETWORK = "eip155:8453"
-GROK_COST = float(os.environ.get("GROK_COST_USD", "0.30"))  # measured Sep 2026: ~$0.30/call at xAI defaults
+GROK_COST = float(os.environ.get("GROK_COST_USD", "0.15"))  # grok-4.3, 2 rounds: ~$0.08-0.11/call measured, with headroom
 GROK_MIN_MARGIN = float(os.environ.get("GROK_MIN_MARGIN", "1.5"))  # price must cover cost x this to call Grok
 TOP_COST_MULT = float(os.environ.get("TOP_COST_MULT", "1.5"))  # /top reads more posts than one market
 # Per-caller/global hourly caps, failure budgets and the daily $ budget live in guards.SpendGuard
