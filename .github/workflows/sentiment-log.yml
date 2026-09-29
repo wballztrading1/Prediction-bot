@@ -1,8 +1,9 @@
 name: sentiment-log
 
 # 4-week signal test: once a day, record X sentiment (Grok) and Polymarket odds
-# for 5 tracked markets into data/sentiment_log.csv. Capped at 160 Grok calls per
-# month (about $3-4). Read-only for the live API: no payments, no deploys.
+# for 5 tracked markets into data/sentiment_log.csv. One scored run per day and a
+# monthly dollar budget (LOGGER_BUDGET_USD, default $10). Read-only for the live
+# API: no payments, no deploys.
 
 on:
   schedule:
