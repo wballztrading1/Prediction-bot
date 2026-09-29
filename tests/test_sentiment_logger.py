@@ -62,7 +62,7 @@ def test_monthly_cap_stops_grok(tmp_path):
         return fake_score(q)
 
     sl.run(now=NOW, path=path, fetch=fake_market, score=counting_score, max_calls=6)
-    sl.run(now=NOW, path=path, fetch=fake_market, score=counting_score, max_calls=6)
+    sl.run(now=NOW, path=path, fetch=fake_market, score=counting_score, max_calls=6, force=True)
     assert len(calls) == 6
     assert sl.calls_this_month(path, NOW) == 6
     assert "monthly_grok_cap_reached" in [r["error"] for r in read(path)]
@@ -89,3 +89,20 @@ def test_prompt_excludes_market_odds_chatter():
     assert "Ignore posts that only discuss betting odds" in prompt
     assert "do not mention market odds" in prompt
     assert sl.PROMPT_VERSION == "v2"
+
+
+def test_second_run_same_day_is_skipped(tmp_path):
+    path = tmp_path / "log.csv"
+    calls = []
+
+    def counting_score(q):
+        calls.append(q)
+        return fake_score(q)
+
+    sl.run(now=NOW, path=path, fetch=fake_market, score=counting_score)
+    assert sl.run(now=NOW, path=path, fetch=fake_market, score=counting_score) == []
+    assert len(calls) == len(sl.MARKETS) - 1  # the closed market is never scored
+
+
+def test_default_cap_follows_dollar_budget():
+    assert sl.MAX_GROK_CALLS_PER_MONTH == int(sl.LOGGER_BUDGET_USD // sl.GROK_COST_USD)
