@@ -25,7 +25,7 @@ import grok_cost  # noqa: E402  (shared Grok settings: model, search window, max
 LOG_PATH = Path(os.environ.get("SENTIMENT_LOG_PATH", ROOT / "data" / "sentiment_log.csv"))
 # Monthly Grok budget in dollars, turned into a call cap using the measured cost per call.
 LOGGER_BUDGET_USD = float(os.environ.get("LOGGER_BUDGET_USD", "10"))
-GROK_COST_USD = float(os.environ.get("GROK_COST_USD", "0.30"))
+GROK_COST_USD = float(os.environ.get("GROK_COST_USD", "0.15"))
 MAX_GROK_CALLS_PER_MONTH = int(
     os.environ.get("MAX_GROK_CALLS_PER_MONTH", str(int(LOGGER_BUDGET_USD // GROK_COST_USD)))
 )

@@ -3,12 +3,16 @@
 Used by the live API (main.py), the signal-test logger and the Apify Actor so
 all three search X the same way and can be tuned in one place with env vars:
 
-    GROK_MODEL        model id (default grok-4.7)
+    GROK_MODEL        model id (default grok-4.3)
     GROK_SEARCH_DAYS  only search posts from the last N days (default 3; 0 = no limit)
-    GROK_MAX_TURNS    cap on search/reasoning rounds (unset = xAI default, about 3)
+    GROK_MAX_TURNS    cap on search/reasoning rounds (default 2; 0 = xAI default, about 3)
 
 X Search is billed per post read ($5 per 1,000), plus tokens for every post the
 model reads, so fewer, more recent posts is the main cost lever.
+
+Defaults chosen 2026-09-29 from the grok-cost-probe run: grok-4.3 with 2 rounds
+and a 3-day window cost about $0.08-0.11 per call (grok-4.7 unlimited: ~$0.30)
+and agreed on the direction of every test market.
 """
 import os
 from datetime import date, timedelta
@@ -26,7 +30,7 @@ X_PROFILE_USD = 10.00 / 1000
 
 
 def model() -> str:
-    return os.environ.get("GROK_MODEL", "grok-4.7").strip() or "grok-4.7"
+    return os.environ.get("GROK_MODEL", "grok-4.3").strip() or "grok-4.3"
 
 
 def search_days() -> int:
@@ -37,11 +41,12 @@ def search_days() -> int:
 
 
 def max_turns() -> Optional[int]:
-    raw = os.environ.get("GROK_MAX_TURNS", "").strip()
+    raw = os.environ.get("GROK_MAX_TURNS", "2").strip()
     try:
-        return max(1, int(raw)) if raw else None
+        turns = int(raw)
     except ValueError:
-        return None
+        return 2
+    return turns if turns > 0 else None
 
 
 def x_search_tool(days: Optional[int] = None, today: Optional[date] = None) -> dict:

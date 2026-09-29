@@ -13,10 +13,10 @@ def test_defaults_search_recent_posts_only(monkeypatch):
     for name in ("GROK_MODEL", "GROK_SEARCH_DAYS", "GROK_MAX_TURNS"):
         monkeypatch.delenv(name, raising=False)
     kwargs = grok_cost.request_kwargs("hi")
-    assert kwargs["model"] == "grok-4.7"
+    assert kwargs["model"] == "grok-4.3"
     assert kwargs["tools"][0]["type"] == "x_search"
     assert "from_date" in kwargs["tools"][0]
-    assert "extra_body" not in kwargs  # max_turns only when set
+    assert kwargs["extra_body"] == {"max_turns": 2}
 
 
 def test_env_overrides(monkeypatch):
@@ -33,7 +33,13 @@ def test_bad_env_values_fall_back(monkeypatch):
     monkeypatch.setenv("GROK_SEARCH_DAYS", "lots")
     monkeypatch.setenv("GROK_MAX_TURNS", "many")
     assert grok_cost.search_days() == 3
+    assert grok_cost.max_turns() == 2
+
+
+def test_max_turns_zero_means_xai_default(monkeypatch):
+    monkeypatch.setenv("GROK_MAX_TURNS", "0")
     assert grok_cost.max_turns() is None
+    assert "extra_body" not in grok_cost.request_kwargs("hi")
 
 
 def test_from_date_window():
