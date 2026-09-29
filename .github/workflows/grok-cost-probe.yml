@@ -1,0 +1,27 @@
+name: grok-cost-probe
+
+# Manual only. Scores 2 markets under 3 cheaper Grok settings (about 6 calls,
+# well under $1) and writes cost + scores to the run summary. Read-only:
+# commits nothing, touches no live service.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install openai httpx
+      - name: Probe
+        env:
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+        run: python scripts/grok_cost_probe.py
