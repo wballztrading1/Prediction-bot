@@ -9,24 +9,29 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import grok_cost
+import guards
 
 PROMPT_VERSION = "v2"
 MAX_QUESTIONS = 25
-MAX_QUESTION_CHARS = 300
 NL = chr(10)
 
 
 def clean_questions(raw) -> list:
-    """Trimmed, de-duplicated (case-insensitive) questions, capped at MAX_QUESTIONS."""
+    """Cleaned, de-duplicated questions (shared rules with the API), capped at MAX_QUESTIONS.
+
+    Over-long questions are dropped; characters used to smuggle instructions
+    into the prompt are stripped; spelling variants count once.
+    """
     if isinstance(raw, str):
         raw = [raw]
     out, seen = [], set()
     for item in raw or []:
         if not isinstance(item, str):
             continue
-        q = " ".join(item.split())[:MAX_QUESTION_CHARS]
-        if q and q.lower() not in seen:
-            seen.add(q.lower())
+        q, err = guards.clean_question(item)
+        key = guards.cache_key(q)
+        if not err and key and key not in seen:
+            seen.add(key)
             out.append(q)
     return out[:MAX_QUESTIONS]
 
@@ -98,7 +103,7 @@ def grok_score(question: str, client) -> dict:
     return normalize(parsed)
 
 
-def safe_score(question: str, client, attempts: int = 2):
+def safe_score(question: str, client, attempts: int = 1):
     """(score dict, None) or (None, error code). Never raises."""
     err = "scoring_failed"
     for _ in range(attempts):
