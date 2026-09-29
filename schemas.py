@@ -210,6 +210,10 @@ def paid_responses(model, price: str) -> dict:
                 "the PAYMENT-SIGNATURE header."
             ),
         },
+        400: {
+            "model": MissingQueryOut,
+            "description": "Missing or over-long q (not charged)",
+        },
         503: {
             "model": UnavailableOut,
             "description": "Scoring temporarily unavailable; no payment is taken (x402 settles only on success). Retry shortly",
