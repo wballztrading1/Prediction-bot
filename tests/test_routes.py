@@ -60,8 +60,22 @@ def test_catalog_prices_aligned():
 
 def test_sentiment_requires_q():
     r = client.get("/sentiment")
-    assert r.status_code == 200
+    assert r.status_code == 400  # x402 never settles a 4xx: no charge
     assert "error" in r.json()
+
+
+def test_overlong_q_rejected_before_grok():
+    r = client.get("/sentiment", params={"q": "x" * 500})
+    assert r.status_code == 400
+
+
+def test_question_variants_share_cache():
+    main.CACHE.clear()
+    main.PREV.clear()
+    client.get("/sentiment", params={"q": "Will Bitcoin hit 150k in 2026"})
+    assert list(main.CACHE) == ["will bitcoin hit 150k in 2026"]
+    client.get("/sentiment", params={"q": "  will BITCOIN hit 150k in 2026?? "})
+    assert list(main.CACHE) == ["will bitcoin hit 150k in 2026"]
 
 
 def test_sentiment_shape():
