@@ -11,6 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from openai import OpenAI
 
+import grok_cost
 from landing import about_html, llms_txt
 from odds import FIXTURE as ODDS_FIXTURE
 from odds import ensure_kalshi_index, fixture_kalshi, kalshi_index_status, market_odds
@@ -39,10 +40,10 @@ PRICE_LITE = os.environ.get("PRICE_LITE", "$0.01")
 PRICE_BRIEF = os.environ.get("PRICE_BRIEF", os.environ.get("PRICE", "$0.05"))
 PRICE = PRICE_BRIEF  # backward compatible
 NETWORK = "eip155:8453"
-GROK_COST = float(os.environ.get("GROK_COST_USD", "0.02"))
+GROK_COST = float(os.environ.get("GROK_COST_USD", "0.30"))  # measured Sep 2026: ~$0.30/call at xAI defaults
 CALLER_CAP_USD = float(os.environ.get("CALLER_CAP_USD", "0.40"))
 CALLER_CAP = int(os.environ.get("CALLER_GROK_PER_HOUR", "20"))
-GLOBAL_CAP = int(os.environ.get("GLOBAL_GROK_PER_HOUR", "60"))
+GLOBAL_CAP = int(os.environ.get("GLOBAL_GROK_PER_HOUR", "10"))  # each call costs ~$0.30; caps xAI spend per hour
 PUBLIC_BASE = os.environ.get(
     "PUBLIC_BASE_URL", "https://prediction-bot-iggf.onrender.com"
 ).rstrip("/")
@@ -400,14 +401,16 @@ def grok_json(prompt: str):
             ],
         }, None
     try:
-        resp = client.responses.create(
-            model="grok-4.7",
-            input=[{"role": "user", "content": prompt}],
-            tools=[{"type": "x_search"}],
-        )
+        kwargs = grok_cost.request_kwargs(prompt)
+        resp = client.responses.create(**kwargs)
     except Exception as e:
         print(f"ALERT grok_api_error {type(e).__name__}: {e}")
         return None, "grok_error"
+    try:
+        used = grok_cost.usage_summary(resp)
+        print(f"grok_cost usd={grok_cost.estimate_cost(used, kwargs['model'])} {used}")
+    except Exception:
+        pass
 
     text = getattr(resp, "output_text", None) or ""
     if not text and getattr(resp, "output", None):
@@ -448,7 +451,7 @@ def paid_unavailable(question: str, reason: str):
         {
             "error": reason,
             "question": question,
-            "hint": "Payment was accepted but scoring is temporarily unavailable. Retry shortly.",
+            "hint": "Scoring is temporarily unavailable. No payment was taken; retry shortly.",
         },
         status_code=503,
     )
