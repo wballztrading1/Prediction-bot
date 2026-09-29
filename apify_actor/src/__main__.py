@@ -19,6 +19,8 @@ import odds
 
 from .core import clean_questions, make_client, result_item, safe_score
 
+MAX_FAILURES = 2  # unpaid Grok calls allowed per run before the rest is skipped
+
 EVENT = "market-scored"
 GROK_WORKERS = 3
 KALSHI_WAIT_SEC = 240
@@ -77,10 +79,21 @@ async def main() -> None:
         await Actor.set_status_message(f"Scoring {len(questions)} market(s) on X...")
         client = make_client(api_key)
         loop = asyncio.get_running_loop()
+        scores = []
+        failures = 0
         with ThreadPoolExecutor(max_workers=GROK_WORKERS) as pool:
-            scores = await asyncio.gather(
-                *(loop.run_in_executor(pool, safe_score, q, client) for q in questions)
-            )
+            for start in range(0, len(questions), GROK_WORKERS):
+                batch = questions[start : start + GROK_WORKERS]
+                if failures >= MAX_FAILURES:
+                    scores.extend((None, "skipped_after_failures") for _ in batch)
+                    continue
+                results = await asyncio.gather(
+                    *(loop.run_in_executor(pool, safe_score, q, client) for q in batch)
+                )
+                failures += sum(1 for scored, _ in results if scored is None)
+                scores.extend(results)
+        if failures >= MAX_FAILURES:
+            Actor.log.warning(f"Stopped scoring after {failures} failed markets; the rest were skipped (not charged).")
 
         odds_blocks = {}
         if include_odds:
