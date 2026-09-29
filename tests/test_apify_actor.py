@@ -40,9 +40,9 @@ def test_prompt_matches_signal_test_logger():
 
 
 def test_clean_questions_dedupes_trims_and_caps():
-    raw = ["  Will A?  ", "will a?", "", None, 5, "Will  B?"] + [f"Q{i}?" for i in range(40)]
+    raw = ["  Will A?  ", "will a", "", None, 5, "Will  B?", "x" * 500] + [f"Q{i}?" for i in range(40)]
     out = core.clean_questions(raw)
-    assert out[:2] == ["Will A?", "Will B?"]
+    assert out[:2] == ["Will A?", "Will B?"]  # "will a" is a variant of "Will A?"; 500 chars dropped
     assert len(out) == core.MAX_QUESTIONS
     assert core.clean_questions("Single?") == ["Single?"]
     assert core.clean_questions(None) == []
@@ -60,11 +60,13 @@ def test_grok_score_uses_x_search_and_normalizes():
 
 def test_safe_score_retries_then_reports_error():
     client = fake_client(TimeoutError(), '{"score": -20, "catalyst": "c", "volume_signal": "rising"}')
-    scored, err = core.safe_score("Q?", client)
+    scored, err = core.safe_score("Q?", client, attempts=2)
     assert err is None and scored["score"] == -20
 
-    scored, err = core.safe_score("Q?", fake_client("no json here", "still none"))
+    one_try = fake_client("no json here", "never used")
+    scored, err = core.safe_score("Q?", one_try)  # default: no paid retry
     assert scored is None and err == "scoring_failed_ValueError"
+    assert len(one_try.responses.calls) == 1
 
 
 def test_result_item_flattens_odds():
@@ -97,7 +99,7 @@ def test_actor_packaging_is_consistent():
     assert set(fields) <= set(sample)
 
     dockerfile = (ACTOR / "Dockerfile").read_text()
-    for path in ("apify_actor/requirements.txt", "odds.py", "grok_cost.py", "apify_actor/src"):
+    for path in ("apify_actor/requirements.txt", "odds.py", "grok_cost.py", "guards.py", "apify_actor/src"):
         assert f"COPY {path} " in dockerfile
         assert (ROOT / path).exists()
     assert 'CMD ["python3", "-m", "src"]' in dockerfile
@@ -105,6 +107,7 @@ def test_actor_packaging_is_consistent():
 
 def test_entry_point_charges_only_scored_rows():
     src = (ACTOR / "src" / "__main__.py").read_text()
+    assert "MAX_FAILURES = 2" in src and "skipped_after_failures" in src
     assert 'EVENT = "market-scored"' in src
     assert "push_data(item, charged_event_name=EVENT)" in src
     assert "os.environ.get(\"XAI_API_KEY\")" in src

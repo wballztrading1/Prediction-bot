@@ -5,9 +5,10 @@ score X sentiment with Grok (same prompt as the API). Rows are appended to
 data/sentiment_log.csv so we can later check whether sentiment moved before
 the odds did.
 
-Cost control: at most MAX_GROK_CALLS_PER_MONTH Grok calls per calendar month
-(counted from the CSV). Closed markets are never scored. Read-only otherwise:
-no payments, no changes to the live API.
+Cost control: at most one scored run per day, and at most
+MAX_GROK_CALLS_PER_MONTH Grok calls per calendar month (default: LOGGER_BUDGET_USD
+divided by GROK_COST_USD; both counted from the CSV). Closed markets are never
+scored. Read-only otherwise: no payments, no changes to the live API.
 """
 import csv
 import json
@@ -22,7 +23,12 @@ sys.path.insert(0, str(ROOT))
 import grok_cost  # noqa: E402  (shared Grok settings: model, search window, max turns)
 
 LOG_PATH = Path(os.environ.get("SENTIMENT_LOG_PATH", ROOT / "data" / "sentiment_log.csv"))
-MAX_GROK_CALLS_PER_MONTH = int(os.environ.get("MAX_GROK_CALLS_PER_MONTH", "160"))
+# Monthly Grok budget in dollars, turned into a call cap using the measured cost per call.
+LOGGER_BUDGET_USD = float(os.environ.get("LOGGER_BUDGET_USD", "10"))
+GROK_COST_USD = float(os.environ.get("GROK_COST_USD", "0.30"))
+MAX_GROK_CALLS_PER_MONTH = int(
+    os.environ.get("MAX_GROK_CALLS_PER_MONTH", str(int(LOGGER_BUDGET_USD // GROK_COST_USD)))
+)
 GAMMA_MARKET_URL = "https://gamma-api.polymarket.com/markets/"
 NL = chr(10)
 
@@ -149,14 +155,29 @@ def calls_this_month(path: Path, now: datetime) -> int:
         )
 
 
+def logged_today(path: Path, now: datetime) -> bool:
+    if not path.exists():
+        return False
+    day = now.strftime("%Y-%m-%d")
+    with path.open(newline="", encoding="utf-8") as f:
+        return any(
+            row.get("date_utc", "").startswith(day) and row.get("grok_called") == "1"
+            for row in csv.DictReader(f)
+        )
+
+
 def run(
     now: Optional[datetime] = None,
     path: Path = LOG_PATH,
     fetch: Callable[[str], dict] = fetch_market,
     score: Callable[[str], dict] = grok_score,
     max_calls: int = MAX_GROK_CALLS_PER_MONTH,
+    force: bool = False,
 ) -> list:
     now = now or datetime.now(timezone.utc)
+    if not force and logged_today(path, now):
+        print("Already scored today; skipping (set FORCE_RUN=1 to run again).")
+        return []
     used = calls_this_month(path, now)
     rows = []
     for market_id, label in MARKETS:
@@ -203,6 +224,6 @@ if __name__ == "__main__":
     if not os.environ.get("XAI_API_KEY"):
         print("XAI_API_KEY secret is not set; nothing to do.")
         sys.exit(1)
-    out = run()
+    out = run(force=os.environ.get("FORCE_RUN") == "1")
     for r in out:
         print(r["label"], "| yes", r["yes_price"], "| score", r["score"], "|", r["error"] or "ok")
