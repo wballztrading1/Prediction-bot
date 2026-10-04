@@ -129,3 +129,12 @@ def test_normalize_clamps():
     assert out["score"] == 100
     assert out["volume_signal"] == "flat"
     assert out["question"] == "q"
+
+
+def test_glama_claim_file():
+    r = client.get("/.well-known/glama.json")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("application/json")
+    body = r.json()
+    assert body["$schema"] == "https://glama.ai/mcp/schemas/connector.json"
+    assert body["claim"].startswith("glama_claim_")
+

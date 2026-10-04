@@ -514,6 +514,17 @@ async def sample():
 STATIC = Path(__file__).resolve().parent / "static"
 
 
+# Glama ownership claim for this host (glama.ai connector listing). The token is
+# bound to the owner's Glama account and holds no personal data; keep it served
+# to stay verified.
+GLAMA_CLAIM = os.environ.get("GLAMA_CLAIM", "glama_claim_YTgprTttOVgGqpswoXcZvAN3BMalraio")
+
+
+@app.get("/.well-known/glama.json", include_in_schema=False)
+async def glama_claim():
+    return {"$schema": "https://glama.ai/mcp/schemas/connector.json", "claim": GLAMA_CLAIM}
+
+
 @app.get("/icon.png", include_in_schema=False)
 async def icon_png():
     return FileResponse(STATIC / "icon.png", media_type="image/png")
