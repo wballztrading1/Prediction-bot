@@ -5,10 +5,10 @@ Gives any MCP-capable agent (Claude, Cursor, etc.) live **Polymarket / Kalshi se
 | Tool | Price | What it returns |
 |------|-------|-----------------|
 | `catalog`, `pricing`, `sample`, `health` | free | Routes, prices, example output, liveness |
-| `top` | $0.01 | 3 most-discussed markets on X with scores |
-| `shift(q)` | $0.01 | Sentiment change vs the prior score |
-| `sentiment(q)` | $0.05 | Score -100..100, catalyst, volume signal |
-| `brief(q)` | $0.05 | Score + shift + one-line summary |
+| `top` | $0.35 | 3 most-discussed markets on X with scores |
+| `shift(q)` | $0.35 | Sentiment change vs the prior score |
+| `sentiment(q)` | $0.35 | Score -100..100, catalyst, volume signal |
+| `brief(q)` | $0.35 | Score + shift + one-line summary |
 
 ## Install
 
@@ -26,7 +26,7 @@ Requires [uv](https://docs.astral.sh/uv/). Add to your MCP client config:
       ],
       "env": {
         "PREDICTION_BOT_EVM_PRIVATE_KEY": "<optional: your own Base wallet key>",
-        "PREDICTION_BOT_MAX_USD_PER_CALL": "0.05",
+        "PREDICTION_BOT_MAX_USD_PER_CALL": "0.50",
         "PREDICTION_BOT_SESSION_BUDGET_USD": "1.00"
       }
     }
@@ -42,5 +42,5 @@ Requires [uv](https://docs.astral.sh/uv/). Add to your MCP client config:
 |---------|---------|---------|
 | `PREDICTION_BOT_API_BASE` | `https://prediction-bot-iggf.onrender.com` | API base URL |
 | `PREDICTION_BOT_EVM_PRIVATE_KEY` | unset | Enables auto-pay |
-| `PREDICTION_BOT_MAX_USD_PER_CALL` | `0.05` | Hard cap per paid call |
+| `PREDICTION_BOT_MAX_USD_PER_CALL` | `0.50` | Hard cap per paid call |
 | `PREDICTION_BOT_SESSION_BUDGET_USD` | `1.00` | Cap per server session |

@@ -6,12 +6,12 @@ Free tools (no wallet, no spend):
     catalog, pricing, sample, health
 
 Paid tools (USDC on Base via x402):
-    top ($0.01), shift ($0.01), sentiment ($0.05), brief ($0.05)
+    top, shift, sentiment, brief (current prices: the free pricing tool)
 
 Paid tools only spend when the *agent operator* configures their own wallet via
 PREDICTION_BOT_EVM_PRIVATE_KEY in their MCP client config. Without it, paid
 tools return the HTTP 402 payment quote instead of paying. Spending is capped
-per call (PREDICTION_BOT_MAX_USD_PER_CALL, default 0.05) and per session
+per call (PREDICTION_BOT_MAX_USD_PER_CALL, default 0.50) and per session
 (PREDICTION_BOT_SESSION_BUDGET_USD, default 1.00).
 """
 from __future__ import annotations
@@ -25,7 +25,7 @@ import httpx
 
 DEFAULT_BASE = "https://prediction-bot-iggf.onrender.com"
 USDC_DECIMALS = 6
-DEFAULT_PRICES = {"lite": 0.01, "full": 0.05}
+DEFAULT_PRICES = {"lite": 0.35, "full": 0.35}
 ROUTE_TIER = {"/top": "lite", "/shift": "lite", "/sentiment": "full", "/brief": "full"}
 TIMEOUT = 90.0
 
@@ -44,7 +44,7 @@ class Settings:
         env = os.environ if env is None else env
         self.base_url = env.get("PREDICTION_BOT_API_BASE", DEFAULT_BASE).rstrip("/")
         self.private_key = env.get("PREDICTION_BOT_EVM_PRIVATE_KEY") or None
-        self.max_usd_per_call = _usd(env.get("PREDICTION_BOT_MAX_USD_PER_CALL"), 0.05)
+        self.max_usd_per_call = _usd(env.get("PREDICTION_BOT_MAX_USD_PER_CALL"), 0.50)
         self.session_budget_usd = _usd(env.get("PREDICTION_BOT_SESSION_BUDGET_USD"), 1.00)
 
 
@@ -211,8 +211,8 @@ def build_server(api: Optional[PredictionBotAPI] = None):
         instructions=(
             "Polymarket/Kalshi prediction-market sentiment scored from live X (Twitter) "
             "chatter via Grok. Start with the free tools (catalog, pricing, sample). "
-            "Paid tools settle in USDC on Base via x402: top and shift cost $0.01, "
-            "sentiment and brief cost $0.05. Paid tools return a payment quote unless "
+            "Paid tools settle in USDC on Base via x402; call the free pricing tool for "
+            "current prices. Paid tools return a payment quote unless "
             "the operator configured a wallet."
         ),
     )
@@ -224,7 +224,7 @@ def build_server(api: Optional[PredictionBotAPI] = None):
 
     @server.tool()
     async def pricing() -> dict:
-        """Free. Current USDC price ladder: lite ($0.01) and full ($0.05) tiers."""
+        """Free. Current USDC price ladder: lite and full tiers."""
         return await api.get_free("/pricing")
 
     @server.tool()
@@ -239,25 +239,25 @@ def build_server(api: Optional[PredictionBotAPI] = None):
 
     @server.tool()
     async def top() -> dict:
-        """Paid $0.01. The three most-discussed Polymarket/Kalshi markets on X right now,
+        """Paid (lite tier; see pricing). The three most-discussed Polymarket/Kalshi markets on X right now,
         each with a sentiment score (-100..100), catalyst and volume_signal."""
         return await api.get_paid("/top")
 
     @server.tool()
     async def shift(q: str) -> dict:
-        """Paid $0.01. Change in X sentiment for a market question vs the previous
+        """Paid (lite tier; see pricing). Change in X sentiment for a market question vs the previous
         cached score. q = exact Polymarket/Kalshi market question."""
         return await api.get_paid("/shift", {"q": q})
 
     @server.tool()
     async def sentiment(q: str) -> dict:
-        """Paid $0.05. Live X (Twitter) sentiment for a Polymarket/Kalshi market question:
+        """Paid (full tier; see pricing). Live X (Twitter) sentiment for a Polymarket/Kalshi market question:
         score -100..100, catalyst, volume_signal. q = exact market question."""
         return await api.get_paid("/sentiment", {"q": q})
 
     @server.tool()
     async def brief(q: str) -> dict:
-        """Paid $0.05. Agent briefing for a market question: score, catalyst, volume_signal,
+        """Paid (full tier; see pricing). Agent briefing for a market question: score, catalyst, volume_signal,
         shift vs prior score and a one-line summary. q = exact market question."""
         return await api.get_paid("/brief", {"q": q})
 
