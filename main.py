@@ -10,7 +10,7 @@ from typing import Optional, Union
 
 from fastapi import FastAPI, Query, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from openai import OpenAI
 
 import httpx
@@ -509,6 +509,19 @@ def free_scores():
 @app.get("/sample", tags=["free"], summary="Static example response (no Grok)", responses={200: {"model": SampleOut}})
 async def sample():
     return SAMPLE_PAYLOAD
+
+
+STATIC = Path(__file__).resolve().parent / "static"
+
+
+@app.get("/icon.png", include_in_schema=False)
+async def icon_png():
+    return FileResponse(STATIC / "icon.png", media_type="image/png")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(STATIC / "favicon.ico", media_type="image/x-icon")
 
 
 @app.get("/about", tags=["free"], summary="Human-readable landing page", response_class=HTMLResponse)

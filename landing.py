@@ -18,6 +18,9 @@ ABOUT_HTML = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="/icon.png">
+<link rel="apple-touch-icon" href="/icon.png">
 <title>Prediction Market X Sentiment API</title>
 <meta name="description" content="Pay-per-call Polymarket and Kalshi sentiment from live X chatter, scored by Grok. USDC on Base via x402. Built for AI agents.">
 <style>

@@ -9,6 +9,7 @@ keywords = ["mcp", "x402", "polymarket", "kalshi", "prediction market", "sentime
 dependencies = [
     "mcp>=2.1,<3",
     "httpx>=0.28.1",
+    "pydantic>=2.7",
     "x402[httpx,evm]>=2.8",
 ]
 
