@@ -10,6 +10,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from openai import OpenAI
 
+import discovery
 import grok_cost
 import guards
 from landing import about_html, llms_txt
@@ -102,11 +103,11 @@ if not TEST_MODE:
     server.register(NETWORK, ExactEvmServerScheme())
     server.register_extension(bazaar_resource_server_extension)
 
-    def pay_route(description, example, price, input_schema=None, input_example=None):
-        ext_kw = dict(output=OutputConfig(example=example))
-        if input_schema:
-            ext_kw["input"] = input_example or {}
-            ext_kw["input_schema"] = input_schema
+    def pay_route(route, price, with_q=True):
+        ext_kw = dict(output=OutputConfig(example=discovery.EXAMPLES[route]))
+        if with_q:
+            ext_kw["input"] = dict(discovery.Q_INPUT)
+            ext_kw["input_schema"] = discovery.Q_SCHEMA
         return RouteConfig(
             accepts=[
                 PaymentOption(
@@ -114,116 +115,15 @@ if not TEST_MODE:
                 )
             ],
             mime_type="application/json",
-            description=description,
-            extensions=declare_discovery_extension(**ext_kw),
+            description=discovery.descriptions(PRICE_LITE, PRICE_BRIEF)[route],
+            extensions=discovery.with_listing(declare_discovery_extension(**ext_kw)),
         )
 
-    q_schema = {
-        "properties": {
-            "q": {
-                "type": "string",
-                "description": (
-                    "Exact Polymarket or Kalshi market question text "
-                    "(e.g. Will Bitcoin hit 150k in 2026)"
-                ),
-            }
-        },
-        "required": ["q"],
-    }
-
-    SENTIMENT_EXAMPLE = {
-        "score": 12,
-        "catalyst": "ETF inflows",
-        "volume_signal": "rising",
-        "question": "Will Bitcoin hit 150k in 2026",
-        "scored_at": "2026-09-22T00:00:00+00:00",
-        "tier": "sentiment",
-    }
-    BRIEF_EXAMPLE = {
-        "question": "Will Bitcoin hit 150k in 2026",
-        "score": 12,
-        "catalyst": "ETF inflows",
-        "volume_signal": "rising",
-        "shift": 16,
-        "score_before": -4,
-        "summary": "X chatter turned more bullish after ETF inflow headlines.",
-        "scored_at": "2026-09-22T00:00:00+00:00",
-        "odds": {
-            "polymarket": {
-                "source": "polymarket",
-                "market": "Will Bitcoin hit $150k by December 31, 2026?",
-                "yes_price": 0.028,
-                "implied_prob_pct": 2.8,
-                "url": "https://polymarket.com/event/when-will-bitcoin-hit-150k",
-                "match_score": 0.9,
-            },
-            "fetched_at": "2026-09-22T00:00:00+00:00",
-        },
-        "tier": "brief",
-    }
-    SHIFT_EXAMPLE = {
-        "question": "Will Bitcoin hit 150k in 2026",
-        "score_now": 12,
-        "score_before": -4,
-        "shift": 16,
-        "catalyst": "ETF inflows",
-        "scored_at": "2026-09-22T00:00:00+00:00",
-    }
-    TOP_EXAMPLE = {
-        "markets": [
-            {
-                "question": "Will Bitcoin hit 150k in 2026",
-                "score": 12,
-                "catalyst": "ETF inflows",
-                "volume_signal": "rising",
-            }
-        ],
-        "scored_at": "2026-09-22T00:00:00+00:00",
-    }
-
     routes = {
-        "GET /sentiment": pay_route(
-            (
-                "Polymarket/Kalshi X (Twitter) sentiment score for agents — "
-                "Grok live search returns score -100..100, catalyst, and volume_signal. "
-                f"Full Grok X-sentiment at {PRICE_BRIEF}."
-            ),
-            SENTIMENT_EXAMPLE,
-            PRICE_BRIEF,
-            q_schema,
-            {"q": "Will Bitcoin hit 150k in 2026"},
-        ),
-        "GET /brief": pay_route(
-            (
-                "Prediction-market briefing for AI agents: X sentiment score, "
-                "catalyst, volume_signal, shift vs prior cache, a one-line summary, "
-                "and live Polymarket and Kalshi odds (Yes price) for the matched market. "
-                f"Polymarket and Kalshi questions. Full brief at {PRICE_BRIEF}."
-            ),
-            BRIEF_EXAMPLE,
-            PRICE_BRIEF,
-            q_schema,
-            {"q": "Will Bitcoin hit 150k in 2026"},
-        ),
-        "GET /shift": pay_route(
-            (
-                "Sentiment shift detector for Polymarket/Kalshi: current X score "
-                "minus last cached score — catch narrative flips between agent polls. "
-                f"Price {PRICE_LITE}."
-            ),
-            SHIFT_EXAMPLE,
-            PRICE_LITE,
-            q_schema,
-            {"q": "Will Bitcoin hit 150k in 2026"},
-        ),
-        "GET /top": pay_route(
-            (
-                "Top 3 Polymarket/Kalshi markets by live X (Twitter) discussion "
-                f"intensity with sentiment scores — {PRICE_LITE} per scan."
-            ),
-            TOP_EXAMPLE,
-            PRICE_LITE,
-        ),
+        "GET /sentiment": pay_route("GET /sentiment", PRICE_BRIEF),
+        "GET /brief": pay_route("GET /brief", PRICE_BRIEF),
+        "GET /shift": pay_route("GET /shift", PRICE_LITE),
+        "GET /top": pay_route("GET /top", PRICE_LITE, with_q=False),
     }
     app.add_middleware(PaymentMiddlewareASGI, routes=routes, server=server)
 
