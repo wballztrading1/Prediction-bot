@@ -1,9 +1,10 @@
 """MCP server for the Prediction Market X Sentiment API (x402).
 
-Runs locally next to an agent (stdio transport). Exposes:
+Runs locally next to an agent (stdio transport), or hosted by the API itself at
+/mcp (streamable HTTP; hosted mode never holds a wallet). Exposes:
 
 Free tools (no wallet, no spend):
-    catalog, pricing, sample, health
+    scores, catalog, pricing, sample, health
 
 Paid tools (USDC on Base via x402):
     top, shift, sentiment, brief (current prices: the free pricing tool)
@@ -30,6 +31,17 @@ ROUTE_TIER = {"/top": "lite", "/shift": "lite", "/sentiment": "full", "/brief": 
 TIMEOUT = 90.0
 
 
+LOCAL_HOW_TO_PAY = (
+    "Set PREDICTION_BOT_EVM_PRIVATE_KEY (your own Base wallet holding USDC) in this MCP "
+    "server's env to auto-pay, or call the URL with any x402 client."
+)
+HOSTED_HOW_TO_PAY = (
+    "This hosted server never pays. Call the URL with any x402 client (USDC on Base), or run "
+    "the local server (uvx prediction-bot-mcp) with your own wallet key to auto-pay. "
+    "The free scores tool has today's scores for the markets we track."
+)
+
+
 def _usd(value: str | float | None, default: float) -> float:
     if value is None:
         return default
@@ -40,10 +52,12 @@ def _usd(value: str | float | None, default: float) -> float:
 
 
 class Settings:
-    def __init__(self, env: Optional[dict] = None):
+    def __init__(self, env: Optional[dict] = None, hosted: bool = False):
         env = os.environ if env is None else env
+        self.hosted = hosted
         self.base_url = env.get("PREDICTION_BOT_API_BASE", DEFAULT_BASE).rstrip("/")
-        self.private_key = env.get("PREDICTION_BOT_EVM_PRIVATE_KEY") or None
+        # A hosted server is shared by many users, so it never pays for anyone.
+        self.private_key = None if hosted else (env.get("PREDICTION_BOT_EVM_PRIVATE_KEY") or None)
         self.max_usd_per_call = _usd(env.get("PREDICTION_BOT_MAX_USD_PER_CALL"), 0.50)
         self.session_budget_usd = _usd(env.get("PREDICTION_BOT_SESSION_BUDGET_USD"), 1.00)
 
@@ -162,11 +176,7 @@ class PredictionBotAPI:
                     "route": path,
                     "price_usd": price,
                     "accepts": _summarize_accepts(quote),
-                    "how_to_pay": (
-                        "Set PREDICTION_BOT_EVM_PRIVATE_KEY (your own Base wallet holding "
-                        "USDC) in this MCP server's env to auto-pay, or call the URL with "
-                        "any x402 client."
-                    ),
+                    "how_to_pay": HOSTED_HOW_TO_PAY if self.settings.hosted else LOCAL_HOW_TO_PAY,
                     "url": f"{self.settings.base_url}{path}",
                     "params": params or {},
                 }
@@ -210,12 +220,20 @@ def build_server(api: Optional[PredictionBotAPI] = None):
         name="prediction-bot",
         instructions=(
             "Polymarket/Kalshi prediction-market sentiment scored from live X (Twitter) "
-            "chatter via Grok. Start with the free tools (catalog, pricing, sample). "
+            "chatter via Grok. Start with the free tools: scores (today's scores for the "
+            "markets we track), catalog, pricing, sample. "
             "Paid tools settle in USDC on Base via x402; call the free pricing tool for "
             "current prices. Paid tools return a payment quote unless "
             "the operator configured a wallet."
         ),
     )
+
+    @server.tool()
+    async def scores() -> dict:
+        """Free. Latest daily X (Twitter) sentiment score for each prediction market we track
+        (Polymarket), with the change since the previous day, the catalyst and the market's Yes
+        price. Use sentiment(q) for a fresh score on any other question."""
+        return await api.get_free("/scores")
 
     @server.tool()
     async def catalog() -> dict:

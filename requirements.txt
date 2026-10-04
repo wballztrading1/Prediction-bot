@@ -7,3 +7,4 @@ setuptools
 wheel
 httpx
 pytest
+mcp>=2.1,<3

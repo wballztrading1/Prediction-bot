@@ -1,0 +1,48 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.wballztrading1/prediction-bot",
+  "title": "Prediction Market X Sentiment",
+  "description": "Polymarket & Kalshi sentiment from X (Twitter) via Grok. Free daily scores; live scoring via x402.",
+  "version": "0.2.0",
+  "websiteUrl": "https://prediction-bot-iggf.onrender.com/about",
+  "repository": {
+    "url": "https://github.com/wballztrading1/Prediction-bot",
+    "source": "github",
+    "id": "1381924688",
+    "subfolder": "mcp_server"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "prediction-bot-mcp",
+      "version": "0.2.0",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "PREDICTION_BOT_EVM_PRIVATE_KEY",
+          "description": "Optional. Your own Base wallet key; enables auto-pay for paid tools (USDC via x402).",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "PREDICTION_BOT_MAX_USD_PER_CALL",
+          "description": "Hard cap in USD per paid call.",
+          "isRequired": false,
+          "default": "0.50"
+        },
+        {
+          "name": "PREDICTION_BOT_SESSION_BUDGET_USD",
+          "description": "Spending cap in USD per server session.",
+          "isRequired": false,
+          "default": "1.00"
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://prediction-bot-iggf.onrender.com/mcp"
+    }
+  ]
+}

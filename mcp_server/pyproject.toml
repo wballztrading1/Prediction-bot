@@ -1,6 +1,6 @@
 [project]
 name = "prediction-bot-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server for Polymarket/Kalshi X-sentiment scores, paid per call in USDC on Base via x402"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -11,6 +11,10 @@ dependencies = [
     "httpx>=0.28.1",
     "x402[httpx,evm]>=2.8",
 ]
+
+[project.urls]
+Homepage = "https://prediction-bot-iggf.onrender.com/about"
+Repository = "https://github.com/wballztrading1/Prediction-bot"
 
 [project.scripts]
 prediction-bot-mcp = "prediction_bot_mcp.server:main"

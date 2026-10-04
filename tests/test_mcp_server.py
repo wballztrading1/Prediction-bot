@@ -123,5 +123,81 @@ def test_server_registers_tools():
     server = build_server(PredictionBotAPI(settings(), http_factory=asgi_factory))
     names = {t.name for t in run(server.list_tools())}
     assert names == {
-        "catalog", "pricing", "sample", "health", "top", "shift", "sentiment", "brief",
+        "scores", "catalog", "pricing", "sample", "health", "top", "shift", "sentiment", "brief",
     }
+
+
+def test_scores_tool_is_free():
+    api = PredictionBotAPI(settings(), http_factory=asgi_factory)
+    body = run(api.get_free("/scores"))
+    assert body["count"] >= 1 and api.spent_usd == 0
+
+
+def test_hosted_mode_never_holds_a_wallet():
+    s = Settings(
+        {"PREDICTION_BOT_API_BASE": BASE, "PREDICTION_BOT_EVM_PRIVATE_KEY": "0x" + "11" * 32},
+        hosted=True,
+    )
+    api = PredictionBotAPI(s, http_factory=payment_required_factory())
+    assert s.private_key is None and not api.can_pay
+    out = run(api.get_paid("/sentiment", {"q": "Will the Fed cut rates"}))
+    assert out["payment_required"] is True
+    assert "never pays" in out["how_to_pay"] and "x402" in out["how_to_pay"]
+
+
+MCP_HEADERS = {
+    "Accept": "application/json, text/event-stream",
+    "Content-Type": "application/json",
+}
+
+
+def test_hosted_mcp_endpoint_end_to_end():
+    """The real /mcp mount: initialize, list tools, call the free scores tool."""
+    pytest.importorskip("mcp")
+    from fastapi.testclient import TestClient
+
+    with TestClient(main.app) as c:  # runs the lifespan that starts the session manager
+        init = c.post(
+            "/mcp",
+            headers=MCP_HEADERS,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-11-25",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "1"},
+                },
+            },
+        )
+        assert init.status_code == 200, init.text
+        assert init.json()["result"]["serverInfo"]["name"] == "prediction-bot"
+
+        hdrs = {**MCP_HEADERS, "MCP-Protocol-Version": "2025-11-25"}
+        listed = c.post("/mcp", headers=hdrs, json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        assert listed.status_code == 200, listed.text
+        names = {t["name"] for t in listed.json()["result"]["tools"]}
+        assert {"scores", "sentiment", "brief"} <= names
+
+        called = c.post(
+            "/mcp",
+            headers=hdrs,
+            json={
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {"name": "scores", "arguments": {}},
+            },
+        )
+        assert called.status_code == 200, called.text
+        result = called.json()["result"]
+        assert not result.get("isError"), result
+        payload = result.get("structuredContent") or json.loads(result["content"][0]["text"])
+        if "count" not in payload and isinstance(payload.get("result"), dict):
+            payload = payload["result"]
+        assert payload["count"] >= 1
+
+        # Free REST routes still answer next to the mount.
+        assert c.get("/health").json()["status"] == "ok"
+
