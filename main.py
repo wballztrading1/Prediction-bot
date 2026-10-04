@@ -1,8 +1,11 @@
 import os
 import json
 import re
+import sys
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional, Union
 
 from fastapi import FastAPI, Query, Request
@@ -10,9 +13,12 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from openai import OpenAI
 
+import httpx
+
 import discovery
 import grok_cost
 import guards
+import scores
 from landing import about_html, llms_txt
 from odds import FIXTURE as ODDS_FIXTURE
 from odds import ensure_kalshi_index, fixture_kalshi, kalshi_index_status, market_odds
@@ -61,11 +67,26 @@ for _name, _price, _cost in (
             "those routes serve cached results only and never call Grok."
         )
 
+MCP_HOSTED = None  # set at the bottom of this file once routes exist
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    # A mounted MCP app's own lifespan never runs; the host app must start its
+    # session manager or every /mcp request fails.
+    if MCP_HOSTED is None:
+        yield
+    else:
+        async with MCP_HOSTED.session_manager.run():
+            yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Prediction Market X Sentiment (x402)",
     description=(
         "Agent-native Polymarket/Kalshi sentiment from live X chatter. "
-        "Pay USDC on Base via HTTP 402. Free: /, /health, /sample, /catalog, /pricing. "
+        "Pay USDC on Base via HTTP 402. Free: /, /health, /scores, /sample, /catalog, /pricing, MCP at /mcp. "
         f"Lite {PRICE_LITE}: /top, /shift. Full {PRICE_BRIEF}: /sentiment, /brief."
     ),
     version="1.2.0",
@@ -175,7 +196,9 @@ def catalog_body() -> dict:
         "free": [
             {"method": "GET", "path": "/", "price": "$0", "desc": "Service index for agents"},
             {"method": "GET", "path": "/health", "price": "$0", "desc": "Liveness + price ladder"},
+            {"method": "GET", "path": "/scores", "price": "$0", "desc": "Latest daily X-sentiment scores for tracked markets"},
             {"method": "GET", "path": "/sample", "price": "$0", "desc": "Static example JSON (no Grok)"},
+            {"method": "POST", "path": "/mcp", "price": "$0", "desc": "Hosted MCP server (streamable HTTP); paid tools return the x402 quote"},
             {"method": "GET", "path": "/catalog", "price": "$0", "desc": "Machine-readable route catalog"},
             {"method": "GET", "path": "/pricing", "price": "$0", "desc": "Explicit price ladder"},
             {"method": "GET", "path": "/about", "price": "$0", "desc": "Human-readable landing page"},
@@ -213,8 +236,8 @@ def catalog_body() -> dict:
         "docs": f"{PUBLIC_BASE}/docs",
         "demo_client": "See demo/pay_once.py in the GitHub repo",
         "mcp": (
-            "uvx --from git+https://github.com/wballztrading1/Prediction-bot"
-            "#subdirectory=mcp_server prediction-bot-mcp"
+            f"Hosted (no install): {PUBLIC_BASE}/mcp (streamable HTTP). "
+            "Local, with optional auto-pay from your own wallet: uvx prediction-bot-mcp"
         ),
     }
 
@@ -460,7 +483,7 @@ async def pricing():
         "currency": "USDC",
         "network": NETWORK,
         "ladder": {
-            "free": ["/", "/health", "/sample", "/catalog", "/pricing", "/docs"],
+            "free": ["/", "/health", "/scores", "/sample", "/catalog", "/pricing", "/docs", "/mcp"],
             "lite": {"price": PRICE_LITE, "routes": ["/top", "/shift"]},
             "full": {"price": PRICE_BRIEF, "routes": ["/sentiment", "/brief"]},
         },
@@ -471,6 +494,16 @@ async def pricing():
             "Prices are set to cover the live Grok X search behind each uncached call."
         ),
     }
+
+
+SCORES = scores.ScoresSource(fetch=None if TEST_MODE else scores.github_fetch)
+
+
+@app.get("/scores", tags=["free"], summary="Latest daily X-sentiment scores (free)")
+def free_scores():
+    """Free daily snapshot: the latest X-sentiment score for each market we track,
+    with the change since the previous day. For any other question use /sentiment."""
+    return SCORES.get()
 
 
 @app.get("/sample", tags=["free"], summary="Static example response (no Grok)", responses={200: {"model": SampleOut}})
@@ -493,7 +526,7 @@ async def health():
     return {
         "status": "ok",
         "routes": {
-            "free": ["/", "/health", "/sample", "/catalog", "/pricing", "/docs"],
+            "free": ["/", "/health", "/scores", "/sample", "/catalog", "/pricing", "/docs", "/mcp"],
             "paid_lite": ["/top", "/shift"],
             "paid_brief": ["/sentiment", "/brief"],
         },
@@ -614,3 +647,36 @@ async def top(request: Request):
     }
     CACHE["__top__"] = (now, data)
     return data
+
+
+# --- hosted MCP server at /mcp ----------------------------------------------
+# Same tools as the local package (mcp_server/), served over streamable HTTP so
+# agents can connect by URL with nothing to install. It calls this app
+# in-process, so paid tools hit the same x402 paywall and return the quote; the
+# hosted server never holds a wallet. Mounted last: Mount("/") must come after
+# every other route or it would shadow them.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "mcp_server"))
+from mcp.server.transport_security import TransportSecuritySettings  # noqa: E402
+from prediction_bot_mcp.server import (  # noqa: E402
+    PredictionBotAPI,
+    Settings as McpSettings,
+    build_server,
+)
+
+_mcp_api = PredictionBotAPI(
+    McpSettings({"PREDICTION_BOT_API_BASE": PUBLIC_BASE}, hosted=True),
+    http_factory=lambda: httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url=PUBLIC_BASE, timeout=90
+    ),
+)
+MCP_HOSTED = build_server(_mcp_api)
+app.mount(
+    "/",
+    MCP_HOSTED.streamable_http_app(
+        stateless_http=True,  # no per-client session state; survives restarts
+        json_response=True,
+        # DNS-rebinding protection guards servers on a user's own machine. This one
+        # is public, unauthenticated and holds no secrets, so it accepts any Host.
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+    ),
+)

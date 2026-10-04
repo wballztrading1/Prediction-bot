@@ -8,11 +8,14 @@ Agent-native Polymarket/Kalshi sentiment from live X chatter. Settles in USDC on
 
 | Route | Price | Notes |
 |-------|-------|-------|
+| `GET /scores` | free | Latest daily X-sentiment score for each tracked market |
 | `GET /`, `/health`, `/sample`, `/catalog`, `/pricing` | free | Discovery / probe |
-| `GET /top` | **$0.01** | Top 3 markets by X buzz (lite discovery) |
-| `GET /shift?q=` | **$0.01** | Delta vs prior cache (lite discovery) |
-| `GET /sentiment?q=` | **$0.05** | Full Grok X-sentiment score (-100..100) |
-| `GET /brief?q=` | **$0.05** | Score + shift + summary |
+| `GET /top` | **$0.35** | Top 3 markets by X buzz |
+| `GET /shift?q=` | **$0.35** | Change since the previous score |
+| `GET /sentiment?q=` | **$0.35** | Fresh Grok X-sentiment score (-100..100) for any question |
+| `GET /brief?q=` | **$0.35** | Score + shift + summary + live Polymarket/Kalshi odds |
+
+Current prices are always at `/pricing`.
 
 ## Quick probe
 
@@ -25,14 +28,18 @@ python demo/pay_once.py   # shows free routes + unpaid 402
 
 ## For agents: MCP server
 
-Add live prediction-market sentiment to any MCP client (Claude, Cursor, etc.). Free tools work without a wallet; paid tools settle in USDC on Base via x402, with per-call and per-session spend caps.
+Add prediction-market sentiment to any MCP client (Claude, Cursor, VS Code and others). Free tools, including today's scores, work without a wallet; paid tools settle in USDC on Base via x402.
+
+**Hosted, nothing to install:** add `https://prediction-bot-iggf.onrender.com/mcp` as a remote (streamable HTTP) MCP server.
+
+**Local, with optional auto-pay from your own wallet** (per-call and per-session spend caps):
 
 ```json
 {
   "mcpServers": {
     "prediction-bot": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/wballztrading1/Prediction-bot#subdirectory=mcp_server", "prediction-bot-mcp"]
+      "args": ["prediction-bot-mcp"]
     }
   }
 }

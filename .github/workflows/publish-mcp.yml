@@ -1,0 +1,89 @@
+name: publish-mcp
+
+# Publishes the MCP server package (mcp_server/) to PyPI and its listing
+# (server.json) to the official MCP Registry. Runs on a tag like mcp-v0.2.0.
+# No stored secrets: PyPI uses trusted publishing (pending publisher for this
+# workflow + the "pypi" environment) and the registry uses GitHub OIDC, which
+# proves ownership of the io.github.wballztrading1/* namespace.
+
+on:
+  push:
+    tags: ["mcp-v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-mcp
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Check tag matches package and server.json versions
+        run: |
+          python - <<'PY'
+          import json, os, re, tomllib
+          tag = os.environ["GITHUB_REF_NAME"].removeprefix("mcp-v")
+          pkg = tomllib.load(open("mcp_server/pyproject.toml", "rb"))["project"]["version"]
+          init = re.search(r'__version__ = "([^"]+)"', open("mcp_server/prediction_bot_mcp/__init__.py").read()).group(1)
+          srv = json.load(open("server.json"))
+          found = {"tag": tag, "pyproject": pkg, "__init__": init,
+                   "server.json": srv["version"], "server.json package": srv["packages"][0]["version"]}
+          print(found)
+          assert len(set(found.values())) == 1, f"version mismatch: {found}"
+          PY
+      - name: Build
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build mcp_server --outdir dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  registry:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+      - name: Validate server.json
+        run: ./mcp-publisher validate server.json
+      - name: Wait for PyPI to serve this version
+        run: |
+          VERSION="${GITHUB_REF_NAME#mcp-v}"
+          for i in $(seq 1 30); do
+            if curl -fsS "https://pypi.org/pypi/prediction-bot-mcp/${VERSION}/json" > /dev/null; then
+              echo "PyPI has ${VERSION}"; exit 0
+            fi
+            sleep 10
+          done
+          echo "PyPI never served ${VERSION}"; exit 1
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish server.json

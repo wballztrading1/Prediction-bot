@@ -3,10 +3,7 @@
 Plain templates with {{NAME}} placeholders so CSS braces need no escaping.
 """
 
-MCP_CMD = (
-    "uvx --from git+https://github.com/wballztrading1/Prediction-bot"
-    "#subdirectory=mcp_server prediction-bot-mcp"
-)
+MCP_CMD = "uvx prediction-bot-mcp"
 REPO = "https://github.com/wballztrading1/Prediction-bot"
 
 
@@ -57,6 +54,7 @@ footer { margin-top:48px; color:var(--muted); font-size:.85rem; }
 <h2>Prices</h2>
 <table>
 <tr><th>Route</th><th>Price</th><th>Returns</th></tr>
+<tr><td><code>/scores</code></td><td>free</td><td>Latest daily X-sentiment score for each market we track</td></tr>
 <tr><td><code>/catalog</code>, <code>/pricing</code>, <code>/sample</code>, <code>/health</code></td><td>free</td><td>Routes, prices, example output, status</td></tr>
 <tr><td><code>/top</code></td><td>{{PRICE_LITE}}</td><td>3 most-discussed markets on X, each scored</td></tr>
 <tr><td><code>/shift?q=</code></td><td>{{PRICE_LITE}}</td><td>Change in sentiment since the last score</td></tr>
@@ -66,12 +64,13 @@ footer { margin-top:48px; color:var(--muted); font-size:.85rem; }
 <p>Scores are cached for {{TTL}} seconds per market question.</p>
 
 <h2>Use it from an agent (MCP)</h2>
-<p>Add this to your MCP client config (Claude, Cursor and others). Free tools work straight away. Paid tools return a price quote unless you give the server your own wallet, with spend caps per call and per session.</p>
+<p><strong>Hosted, nothing to install:</strong> add <code>{{BASE}}/mcp</code> as a remote (streamable HTTP) MCP server. Free tools, including today's scores, work straight away. Paid tools return the x402 price quote.</p>
+<p><strong>Local, with auto-pay:</strong> run it next to your agent and optionally give it your own wallet, with spend caps per call and per session.</p>
 <pre><code>{
   "mcpServers": {
     "prediction-bot": {
       "command": "uvx",
-      "args": ["--from", "git+{{REPO}}#subdirectory=mcp_server", "prediction-bot-mcp"]
+      "args": ["prediction-bot-mcp"]
     }
   }
 }</code></pre>
@@ -113,6 +112,7 @@ LLMS_TXT = """# Prediction Market X Sentiment API
 Base URL: {{BASE}}
 
 ## Free routes
+- [Scores]({{BASE}}/scores): latest daily X-sentiment score for each market we track, with the change since the previous day (JSON)
 - [Catalog]({{BASE}}/catalog): every route, price, network and pay-to address (JSON)
 - [Pricing]({{BASE}}/pricing): price ladder (JSON)
 - [Sample]({{BASE}}/sample): static example response, no live data (JSON)
@@ -132,7 +132,8 @@ q is the exact market question, e.g. "Will Bitcoin hit 150k in 2026". Scores are
 2. Sign the USDC payment with an x402 client and retry with the PAYMENT-SIGNATURE header.
 
 ## MCP
-Install as an MCP server: {{MCP_CMD}}
+Hosted MCP server (streamable HTTP, no install): {{BASE}}/mcp
+Local MCP server with optional auto-pay: {{MCP_CMD}}
 Source and docs: {{REPO}}
 """
 
