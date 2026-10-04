@@ -4,10 +4,11 @@ Runs locally next to an agent (stdio transport), or hosted by the API itself at
 /mcp (streamable HTTP; hosted mode never holds a wallet). Exposes:
 
 Free tools (no wallet, no spend):
-    scores, catalog, pricing, sample, health
+    get_daily_scores, get_catalog, get_pricing, get_sample, get_health
 
 Paid tools (USDC on Base via x402):
-    top, shift, sentiment, brief (current prices: the free pricing tool)
+    get_top_markets, get_sentiment_shift, get_market_sentiment, get_market_brief
+    (current prices: the free get_pricing tool)
 
 Paid tools only spend when the *agent operator* configures their own wallet via
 PREDICTION_BOT_EVM_PRIVATE_KEY in their MCP client config. Without it, paid
@@ -20,9 +21,23 @@ from __future__ import annotations
 import base64
 import json
 import os
-from typing import Any, Callable, Optional
+from typing import Annotated, Any, Callable, Optional
 
 import httpx
+from pydantic import Field
+
+from . import __version__
+from .models import (
+    Catalog,
+    DailyScores,
+    Health,
+    MarketBrief,
+    MarketSentiment,
+    Pricing,
+    Sample,
+    SentimentShift,
+    TopMarkets,
+)
 
 DEFAULT_BASE = "https://prediction-bot-iggf.onrender.com"
 USDC_DECIMALS = 6
@@ -38,7 +53,7 @@ LOCAL_HOW_TO_PAY = (
 HOSTED_HOW_TO_PAY = (
     "This hosted server never pays. Call the URL with any x402 client (USDC on Base), or run "
     "the local server (uvx prediction-bot-mcp) with your own wallet key to auto-pay. "
-    "The free scores tool has today's scores for the markets we track."
+    "The free get_daily_scores tool has today's scores for the markets we track."
 )
 
 
@@ -212,71 +227,107 @@ class PredictionBotAPI:
         return data
 
 
+Q_DESCRIPTION = (
+    "A Polymarket or Kalshi market question in plain words, e.g. "
+    "'Will the Fed cut rates in October 2026'. Up to 200 characters."
+)
+ICON_URL = f"{DEFAULT_BASE}/icon.png"
+# Module level, not inside build_server: this file uses postponed annotations, so
+# the SDK resolves tool type hints from module globals.
+Q = Annotated[str, Field(description=Q_DESCRIPTION, min_length=1, max_length=200)]
+
+
+def _annotations(title: str, paid: bool):
+    from mcp.types import ToolAnnotations
+
+    if paid:
+        # Not read-only: with a wallet configured (local server) the call spends USDC.
+        return ToolAnnotations(
+            title=title,
+            read_only_hint=False,
+            destructive_hint=False,
+            idempotent_hint=False,
+            open_world_hint=True,
+        )
+    return ToolAnnotations(title=title, read_only_hint=True, open_world_hint=True)
+
+
 def build_server(api: Optional[PredictionBotAPI] = None):
     from mcp.server.mcpserver import MCPServer
+    from mcp.types import Icon
 
     api = api or PredictionBotAPI()
     server = MCPServer(
         name="prediction-bot",
+        title="Prediction Market X Sentiment",
+        description=(
+            "Polymarket and Kalshi prediction-market sentiment from X (Twitter), scored by Grok."
+        ),
+        version=__version__,
+        website_url=f"{DEFAULT_BASE}/about",
+        icons=[Icon(src=ICON_URL, mime_type="image/png", sizes=["256x256"])],
         instructions=(
             "Polymarket/Kalshi prediction-market sentiment scored from live X (Twitter) "
-            "chatter via Grok. Start with the free tools: scores (today's scores for the "
-            "markets we track), catalog, pricing, sample. "
-            "Paid tools settle in USDC on Base via x402; call the free pricing tool for "
-            "current prices. Paid tools return a payment quote unless "
-            "the operator configured a wallet."
+            "chatter via Grok. Start with get_daily_scores (free: today's scores for the "
+            "markets we track). Other free tools: get_catalog, get_pricing, get_sample, "
+            "get_health. Paid tools (get_market_sentiment, get_market_brief, "
+            "get_sentiment_shift, get_top_markets) settle in USDC on Base via x402 and "
+            "return a payment quote unless the operator configured a wallet."
         ),
     )
 
-    @server.tool()
-    async def scores() -> dict:
+    def tool(name: str, title: str, paid: bool = False):
+        return server.tool(name=name, title=title, annotations=_annotations(title, paid))
+
+    @tool("get_daily_scores", "Daily market scores (free)")
+    async def get_daily_scores() -> DailyScores:
         """Free. Latest daily X (Twitter) sentiment score for each prediction market we track
         (Polymarket), with the change since the previous day, the catalyst and the market's Yes
-        price. Use sentiment(q) for a fresh score on any other question."""
+        price. For a fresh score on any other question use get_market_sentiment."""
         return await api.get_free("/scores")
 
-    @server.tool()
-    async def catalog() -> dict:
+    @tool("get_catalog", "Route catalog (free)")
+    async def get_catalog() -> Catalog:
         """Free. Machine-readable catalog of every route, price, network and pay-to address."""
         return await api.get_free("/catalog")
 
-    @server.tool()
-    async def pricing() -> dict:
-        """Free. Current USDC price ladder: lite and full tiers."""
+    @tool("get_pricing", "Current prices (free)")
+    async def get_pricing() -> Pricing:
+        """Free. Current USDC prices for the paid tools."""
         return await api.get_free("/pricing")
 
-    @server.tool()
-    async def sample() -> dict:
+    @tool("get_sample", "Example response (free)")
+    async def get_sample() -> Sample:
         """Free. Static example of a sentiment response (not live data) to preview the shape."""
         return await api.get_free("/sample")
 
-    @server.tool()
-    async def health() -> dict:
-        """Free. Service liveness, price ladder and cache TTL."""
+    @tool("get_health", "Service status (free)")
+    async def get_health() -> Health:
+        """Free. Service status, prices and the routes available."""
         return await api.get_free("/health")
 
-    @server.tool()
-    async def top() -> dict:
-        """Paid (lite tier; see pricing). The three most-discussed Polymarket/Kalshi markets on X right now,
-        each with a sentiment score (-100..100), catalyst and volume_signal."""
+    @tool("get_top_markets", "Most-discussed markets on X", paid=True)
+    async def get_top_markets() -> TopMarkets:
+        """Paid (see get_pricing). The three Polymarket/Kalshi markets most discussed on X right
+        now, each with a sentiment score (-100..100), catalyst and volume trend."""
         return await api.get_paid("/top")
 
-    @server.tool()
-    async def shift(q: str) -> dict:
-        """Paid (lite tier; see pricing). Change in X sentiment for a market question vs the previous
-        cached score. q = exact Polymarket/Kalshi market question."""
+    @tool("get_sentiment_shift", "Sentiment change for a market", paid=True)
+    async def get_sentiment_shift(q: Q) -> SentimentShift:
+        """Paid (see get_pricing). Change in X sentiment for a market question since its previous
+        score, with both timestamps and the catalyst."""
         return await api.get_paid("/shift", {"q": q})
 
-    @server.tool()
-    async def sentiment(q: str) -> dict:
-        """Paid (full tier; see pricing). Live X (Twitter) sentiment for a Polymarket/Kalshi market question:
-        score -100..100, catalyst, volume_signal. q = exact market question."""
+    @tool("get_market_sentiment", "Live sentiment for a market", paid=True)
+    async def get_market_sentiment(q: Q) -> MarketSentiment:
+        """Paid (see get_pricing). Fresh X (Twitter) sentiment for any Polymarket or Kalshi market
+        question: score -100..100, the catalyst driving the chatter and the volume trend."""
         return await api.get_paid("/sentiment", {"q": q})
 
-    @server.tool()
-    async def brief(q: str) -> dict:
-        """Paid (full tier; see pricing). Agent briefing for a market question: score, catalyst, volume_signal,
-        shift vs prior score and a one-line summary. q = exact market question."""
+    @tool("get_market_brief", "Market brief with live odds", paid=True)
+    async def get_market_brief(q: Q) -> MarketBrief:
+        """Paid (see get_pricing). Full brief for a market question: score, catalyst, volume trend,
+        change since the previous score, a one-line summary and live Polymarket and Kalshi odds."""
         return await api.get_paid("/brief", {"q": q})
 
     return server

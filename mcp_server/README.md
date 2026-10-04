@@ -6,14 +6,14 @@ Gives any MCP-capable agent (Claude, Cursor, VS Code and others) **sentiment for
 
 | Tool | Price | What it returns |
 |------|-------|-----------------|
-| `scores` | free | Today's X-sentiment score for each market we track, with the change since yesterday |
-| `catalog`, `pricing`, `sample`, `health` | free | Routes, prices, example output, status |
-| `top` | $0.35 | The 3 most-discussed markets on X right now, each scored |
-| `shift(q)` | $0.35 | Change in sentiment since the previous score |
-| `sentiment(q)` | $0.35 | Fresh score -100..100, catalyst and volume trend for any market question |
-| `brief(q)` | $0.35 | Score, change, one-line summary and live Polymarket + Kalshi odds |
+| `get_daily_scores` | free | Today's X-sentiment score for each market we track, with the change since yesterday |
+| `get_catalog`, `get_pricing`, `get_sample`, `get_health` | free | Routes, prices, example output, status |
+| `get_top_markets` | $0.35 | The 3 most-discussed markets on X right now, each scored |
+| `get_sentiment_shift(q)` | $0.35 | Change in sentiment since the previous score |
+| `get_market_sentiment(q)` | $0.35 | Fresh score -100..100, catalyst and volume trend for any market question |
+| `get_market_brief(q)` | $0.35 | Score, change, one-line summary and live Polymarket + Kalshi odds |
 
-Prices can change; the free `pricing` tool always has the current ones.
+Prices can change; the free `get_pricing` tool always has the current ones.
 
 ## Option 1: hosted, nothing to install
 

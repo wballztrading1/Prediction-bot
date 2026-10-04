@@ -123,7 +123,8 @@ def test_server_registers_tools():
     server = build_server(PredictionBotAPI(settings(), http_factory=asgi_factory))
     names = {t.name for t in run(server.list_tools())}
     assert names == {
-        "scores", "catalog", "pricing", "sample", "health", "top", "shift", "sentiment", "brief",
+        "get_daily_scores", "get_catalog", "get_pricing", "get_sample", "get_health",
+        "get_top_markets", "get_sentiment_shift", "get_market_sentiment", "get_market_brief",
     }
 
 
@@ -152,7 +153,7 @@ MCP_HEADERS = {
 
 
 def test_hosted_mcp_endpoint_end_to_end():
-    """The real /mcp mount: initialize, list tools, call the free scores tool."""
+    """The real /mcp mount: initialize, list tools, call the free daily-scores tool."""
     pytest.importorskip("mcp")
     from fastapi.testclient import TestClient
 
@@ -172,13 +173,23 @@ def test_hosted_mcp_endpoint_end_to_end():
             },
         )
         assert init.status_code == 200, init.text
-        assert init.json()["result"]["serverInfo"]["name"] == "prediction-bot"
+        info = init.json()["result"]["serverInfo"]
+        assert info["name"] == "prediction-bot" and info["version"]
 
         hdrs = {**MCP_HEADERS, "MCP-Protocol-Version": "2025-11-25"}
         listed = c.post("/mcp", headers=hdrs, json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         assert listed.status_code == 200, listed.text
         names = {t["name"] for t in listed.json()["result"]["tools"]}
-        assert {"scores", "sentiment", "brief"} <= names
+        tools = {t["name"]: t for t in listed.json()["result"]["tools"]}
+        assert {"get_daily_scores", "get_market_sentiment", "get_market_brief"} <= names
+        # What directory quality checks look for: parameter docs, output schemas, annotations.
+        q = tools["get_market_sentiment"]["inputSchema"]["properties"]["q"]
+        assert q.get("description") and q.get("maxLength") == 200
+        for t in tools.values():
+            assert t.get("outputSchema"), t["name"]
+            assert t.get("annotations", {}).get("title"), t["name"]
+        assert tools["get_daily_scores"]["annotations"]["readOnlyHint"] is True
+        assert tools["get_market_brief"]["annotations"]["readOnlyHint"] is False
 
         called = c.post(
             "/mcp",
@@ -187,7 +198,7 @@ def test_hosted_mcp_endpoint_end_to_end():
                 "jsonrpc": "2.0",
                 "id": 3,
                 "method": "tools/call",
-                "params": {"name": "scores", "arguments": {}},
+                "params": {"name": "get_daily_scores", "arguments": {}},
             },
         )
         assert called.status_code == 200, called.text
@@ -200,4 +211,14 @@ def test_hosted_mcp_endpoint_end_to_end():
 
         # Free REST routes still answer next to the mount.
         assert c.get("/health").json()["status"] == "ok"
+
+
+def test_icon_routes():
+    from fastapi.testclient import TestClient
+
+    c = TestClient(main.app)
+    r = c.get("/icon.png")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+    assert c.get("/favicon.ico").status_code == 200
+    assert 'rel="icon"' in c.get("/about").text
 
