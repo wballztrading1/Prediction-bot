@@ -65,7 +65,7 @@ app = FastAPI(
     description=(
         "Agent-native Polymarket/Kalshi sentiment from live X chatter. "
         "Pay USDC on Base via HTTP 402. Free: /, /health, /sample, /catalog, /pricing. "
-        "Lite $0.01: /top, /shift. Full $0.05: /sentiment, /brief."
+        f"Lite {PRICE_LITE}: /top, /shift. Full {PRICE_BRIEF}: /sentiment, /brief."
     ),
     version="1.2.0",
     servers=[{"url": PUBLIC_BASE}],
@@ -186,7 +186,7 @@ if not TEST_MODE:
             (
                 "Polymarket/Kalshi X (Twitter) sentiment score for agents — "
                 "Grok live search returns score -100..100, catalyst, and volume_signal. "
-                "Full Grok X-sentiment at $0.05."
+                f"Full Grok X-sentiment at {PRICE_BRIEF}."
             ),
             SENTIMENT_EXAMPLE,
             PRICE_BRIEF,
@@ -198,7 +198,7 @@ if not TEST_MODE:
                 "Prediction-market briefing for AI agents: X sentiment score, "
                 "catalyst, volume_signal, shift vs prior cache, a one-line summary, "
                 "and live Polymarket and Kalshi odds (Yes price) for the matched market. "
-                "Polymarket and Kalshi questions. Full brief at $0.05."
+                f"Polymarket and Kalshi questions. Full brief at {PRICE_BRIEF}."
             ),
             BRIEF_EXAMPLE,
             PRICE_BRIEF,
@@ -209,7 +209,7 @@ if not TEST_MODE:
             (
                 "Sentiment shift detector for Polymarket/Kalshi: current X score "
                 "minus last cached score — catch narrative flips between agent polls. "
-                "Lite discovery price $0.01 (aligns with Bazaar indexes)."
+                f"Price {PRICE_LITE}."
             ),
             SHIFT_EXAMPLE,
             PRICE_LITE,
@@ -219,8 +219,7 @@ if not TEST_MODE:
         "GET /top": pay_route(
             (
                 "Top 3 Polymarket/Kalshi markets by live X (Twitter) discussion "
-                "intensity with sentiment scores — agent discovery scan at $0.01 "
-                "(aligns with Bazaar /top index pricing)."
+                f"intensity with sentiment scores — {PRICE_LITE} per scan."
             ),
             TOP_EXAMPLE,
             PRICE_LITE,
@@ -238,8 +237,8 @@ spend = guards.SpendGuard(GROK_COST)
 SAMPLE_PAYLOAD = {
     "demo": True,
     "note": (
-        "Free sample — not live Grok. Discovery /top+/shift $0.01; "
-        "full /sentiment+/brief $0.05."
+        f"Free sample — not live Grok. /top+/shift {PRICE_LITE}; "
+        f"/sentiment+/brief {PRICE_BRIEF}."
     ),
     "example_request": f"{PUBLIC_BASE}/sentiment?q=Will%20Bitcoin%20hit%20150k%20in%202026",
     "example_response": {
@@ -287,14 +286,14 @@ def catalog_body() -> dict:
                 "method": "GET",
                 "path": "/top",
                 "price": PRICE_LITE,
-                "desc": "Three hottest markets on X — lite discovery $0.01",
+                "desc": f"Three hottest markets on X — {PRICE_LITE}",
             },
             {
                 "method": "GET",
                 "path": "/shift",
                 "price": PRICE_LITE,
                 "query": {"q": "market question"},
-                "desc": "Delta vs prior cached score — lite discovery $0.01",
+                "desc": f"Delta vs prior cached score — {PRICE_LITE}",
             },
             {
                 "method": "GET",
@@ -568,8 +567,8 @@ async def pricing():
         "price_lite": PRICE_LITE,
         "price_brief": PRICE_BRIEF,
         "notes": (
-            "Lite /top+/shift align with Bazaar discovery indexes at $0.01; "
-            "full Grok X-sentiment /sentiment+/brief at $0.05."
+            f"/top and /shift cost {PRICE_LITE}; /sentiment and /brief cost {PRICE_BRIEF}. "
+            "Prices are set to cover the live Grok X search behind each uncached call."
         ),
     }
 
