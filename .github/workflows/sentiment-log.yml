@@ -5,9 +5,12 @@ name: sentiment-log
 # monthly dollar budget (LOGGER_BUDGET_USD, $20 here). Read-only for the live
 # API: no payments, no deploys.
 
+# Paused 2026-10-05: the 8-day free look found no predictive signal (see the
+# project doc signal-free-look.md), so the daily Grok spend was stopped.
+# Run manually from the Actions tab if needed; restore the schedule to resume.
 on:
-  schedule:
-    - cron: "17 14 * * *"
+  # schedule:
+  #   - cron: "17 14 * * *"
   workflow_dispatch:
 
 permissions:
